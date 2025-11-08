@@ -1,0 +1,28 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    
+    <!-- Dark Theme Colors -->
+    <Color x:Key="BackgroundColor">#0a0a0a</Color>
+    <Color x:Key="SurfaceColor">#1a1a1a</Color>
+    <Color x:Key="PrimaryColor">#6366f1</Color>
+    <Color x:Key="SecondaryColor">#8b5cf6</Color>
+    <Color x:Key="SuccessColor">#10b981</Color>
+    <Color x:Key="ErrorColor">#ef4444</Color>
+    <Color x:Key="TextColor">#ffffff</Color>
+    <Color x:Key="TextSecondaryColor">#9ca3af</Color>
+    <Color x:Key="BorderColor">#2a2a2a</Color>
+    <Color x:Key="HoverColor">#2a2a2a</Color>
+    
+    <!-- Brushes -->
+    <SolidColorBrush x:Key="BackgroundBrush" Color="{StaticResource BackgroundColor}"/>
+    <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource SurfaceColor}"/>
+    <SolidColorBrush x:Key="PrimaryBrush" Color="{StaticResource PrimaryColor}"/>
+    <SolidColorBrush x:Key="SecondaryBrush" Color="{StaticResource SecondaryColor}"/>
+    <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}"/>
+    <SolidColorBrush x:Key="ErrorBrush" Color="{StaticResource ErrorColor}"/>
+    <SolidColorBrush x:Key="TextBrush" Color="{StaticResource TextColor}"/>
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondaryColor}"/>
+    <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource BorderColor}"/>
+    <SolidColorBrush x:Key="HoverBrush" Color="{StaticResource HoverColor}"/>
+    
+</ResourceDictionary>

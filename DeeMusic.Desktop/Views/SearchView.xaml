@@ -1,0 +1,1542 @@
+<UserControl x:Class="DeeMusic.Desktop.Views.SearchView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:controls="clr-namespace:DeeMusic.Desktop.Controls"
+             mc:Ignorable="d" 
+             d:DesignHeight="600" d:DesignWidth="800"
+             PreviewMouseWheel="UserControl_PreviewMouseWheel">
+    
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+        
+        <!-- Style for tab buttons -->
+        <Style x:Key="SearchTabButton" TargetType="Button" BasedOn="{StaticResource MaterialDesignFlatButton}">
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="Padding" Value="16,0"/>
+            <Setter Property="Margin" Value="0,0,8,0"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding RelativeSource={RelativeSource Self}, Path=Tag}" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource PrimaryHueMidBrush}"/>
+                    <Setter Property="Foreground" Value="White"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        
+        <!-- Style for cards without borders -->
+        <Style x:Key="NoBorderCard" TargetType="materialDesign:Card">
+            <Setter Property="Background" Value="{DynamicResource MaterialDesignCardBackground}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="materialDesign:ShadowAssist.ShadowDepth" Value="Depth0"/>
+            <Setter Property="materialDesign:ElevationAssist.Elevation" Value="Dp0"/>
+        </Style>
+    </UserControl.Resources>
+    
+    <Grid>
+        <ScrollViewer x:Name="MainScrollViewer"
+                     VerticalScrollBarVisibility="Auto"
+                     HorizontalScrollBarVisibility="Disabled"
+                     CanContentScroll="False"
+                     PanningMode="VerticalOnly">
+            <StackPanel>
+                <!-- Loading Indicator -->
+                <ProgressBar Style="{StaticResource MaterialDesignCircularProgressBar}"
+                            Width="48"
+                            Height="48"
+                            IsIndeterminate="True"
+                            Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Margin="0,100,0,0"/>
+                
+                <!-- Configuration Needed Message -->
+                <StackPanel HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           Visibility="{Binding ShowConfigurationNeeded, Converter={StaticResource BooleanToVisibilityConverter}}"
+                           Margin="32,100,32,32">
+                    <materialDesign:PackIcon Kind="Key" 
+                                           Width="64" 
+                                           Height="64"
+                                           HorizontalAlignment="Center"
+                                           Foreground="{DynamicResource PrimaryHueMidBrush}"
+                                           Margin="0,0,0,16"/>
+                    <TextBlock Text="Configuration Required"
+                              FontSize="24"
+                              FontWeight="SemiBold"
+                              HorizontalAlignment="Center"
+                              Margin="0,0,0,8"/>
+                    <TextBlock Text="Please configure your Deezer ARL token in Settings to start using DeeMusic"
+                              FontSize="14"
+                              Foreground="{DynamicResource MaterialDesignBodyLight}"
+                              HorizontalAlignment="Center"
+                              TextWrapping="Wrap"
+                              TextAlignment="Center"
+                              MaxWidth="400"
+                              Margin="0,0,0,16"/>
+                    <Button Content="Open Settings"
+                           Style="{StaticResource MaterialDesignRaisedButton}"
+                           Command="{Binding OpenSettingsCommand}"
+                           Height="40"
+                           Padding="24,0"/>
+                </StackPanel>
+                
+                <!-- View All Page -->
+                <StackPanel Visibility="{Binding ShowViewAllPage, Converter={StaticResource BooleanToVisibilityConverter}}"
+                           Margin="24">
+                    
+                    <!-- Back Button -->
+                    <Button Style="{StaticResource MaterialDesignFlatButton}"
+                            HorizontalAlignment="Left"
+                            Margin="0,0,0,16"
+                            Command="{Binding BackToHomeCommand}"
+                            Height="32"
+                            Padding="8,0">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="ArrowLeft" 
+                                                    Width="18" 
+                                                    Height="18"
+                                                    VerticalAlignment="Center"
+                                                    Margin="0,0,4,0"/>
+                            <TextBlock Text="Back to Home" 
+                                      VerticalAlignment="Center"
+                                      FontSize="13"/>
+                        </StackPanel>
+                    </Button>
+                    
+                    <!-- Title -->
+                    <TextBlock Text="{Binding ViewAllTitle}"
+                              FontSize="24"
+                              FontWeight="SemiBold"
+                              Margin="0,0,0,24"/>
+                    
+                    <!-- Grid of Items -->
+                    <ItemsControl ItemsSource="{Binding ViewAllItems}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <materialDesign:Card Width="160" 
+                                                   Height="240" 
+                                                   Margin="0,0,16,16"
+                                                   UniformCornerRadius="8"
+                                                   Style="{StaticResource NoBorderCard}"
+                                                   Cursor="Hand">
+                                    <materialDesign:Card.InputBindings>
+                                        <MouseBinding MouseAction="LeftClick"
+                                                     Command="{Binding DataContext.ViewAlbumCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                     CommandParameter="{Binding}"/>
+                                    </materialDesign:Card.InputBindings>
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="160"/>
+                                            <RowDefinition Height="*"/>
+                                        </Grid.RowDefinitions>
+                                        
+                                        <controls:CachedImage Grid.Row="0" 
+                                                             Stretch="UniformToFill">
+                                            <controls:CachedImage.Style>
+                                                <Style TargetType="controls:CachedImage">
+                                                    <Setter Property="ImageUrl" Value="{Binding CoverMedium}"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding CoverMedium}" Value="{x:Null}">
+                                                            <Setter Property="ImageUrl" Value="{Binding PictureMedium}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </controls:CachedImage.Style>
+                                        </controls:CachedImage>
+                                        
+                                        <StackPanel Grid.Row="1" 
+                                                   Margin="12,8"
+                                                   VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Title}" 
+                                                      FontWeight="SemiBold"
+                                                      FontSize="13"
+                                                      TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock FontSize="11"
+                                                      Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                      TextTrimming="CharacterEllipsis"
+                                                      Margin="0,4,0,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="{Binding Artist.Name}"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Artist}" Value="{x:Null}">
+                                                                <Setter Property="Text" Value="{Binding User.Name}"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </Grid>
+                                </materialDesign:Card>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+                
+                <!-- Back Button and Tab Buttons -->
+                <Grid Visibility="{Binding HasResults, Converter={StaticResource BooleanToVisibilityConverter}}"
+                      Margin="24,16,24,16">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    
+                    <!-- Back to Home Button -->
+                    <Button Grid.Row="0"
+                            Style="{StaticResource MaterialDesignFlatButton}"
+                            HorizontalAlignment="Left"
+                            Margin="0,0,0,8"
+                            Command="{Binding BackToHomeCommand}"
+                            Height="32"
+                            Padding="8,0">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="ArrowLeft" 
+                                                    Width="18" 
+                                                    Height="18"
+                                                    VerticalAlignment="Center"
+                                                    Margin="0,0,4,0"/>
+                            <TextBlock Text="Back to Home" 
+                                      VerticalAlignment="Center"
+                                      FontSize="13"/>
+                        </StackPanel>
+                    </Button>
+                    
+                    <!-- Tab Buttons -->
+                    <StackPanel Grid.Row="1" 
+                               Orientation="Horizontal">
+                        <Button Content="All" 
+                                Style="{StaticResource SearchTabButton}"
+                                Command="{Binding ChangeSearchTypeCommand}" 
+                                CommandParameter="all"
+                                Tag="{Binding IsAllTabSelected}"/>
+                        <Button Content="Tracks" 
+                                Style="{StaticResource SearchTabButton}"
+                                Command="{Binding ChangeSearchTypeCommand}" 
+                                CommandParameter="track"
+                                Tag="{Binding IsTracksTabSelected}"/>
+                        <Button Content="Albums" 
+                                Style="{StaticResource SearchTabButton}"
+                                Command="{Binding ChangeSearchTypeCommand}" 
+                                CommandParameter="album"
+                                Tag="{Binding IsAlbumsTabSelected}"/>
+                        <Button Content="Playlists" 
+                                Style="{StaticResource SearchTabButton}"
+                                Command="{Binding ChangeSearchTypeCommand}" 
+                                CommandParameter="playlist"
+                                Tag="{Binding IsPlaylistsTabSelected}"/>
+                        <Button Content="Artists" 
+                                Style="{StaticResource SearchTabButton}"
+                                Command="{Binding ChangeSearchTypeCommand}" 
+                                CommandParameter="artist"
+                                Tag="{Binding IsArtistsTabSelected}"/>
+                    </StackPanel>
+                </Grid>
+                
+                <!-- Featured Content (Home Page) -->
+                <ScrollViewer Visibility="{Binding ShowWelcome, Converter={StaticResource BooleanToVisibilityConverter}}"
+                             VerticalScrollBarVisibility="Auto"
+                             HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="24">
+                        
+                        <!-- New Releases -->
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0"
+                                      Text="New Releases"
+                                      FontSize="20"
+                                      FontWeight="SemiBold"
+                                      VerticalAlignment="Center"/>
+                            <Button Grid.Column="1"
+                                   Content="View all"
+                                   Style="{StaticResource MaterialDesignFlatButton}"
+                                   Command="{Binding ViewAllCommand}"
+                                   CommandParameter="NewReleases"
+                                   FontSize="13"
+                                   Padding="12,6"/>
+                        </Grid>
+                        
+                        <Grid Margin="0,0,0,32">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <Button Grid.Column="0"
+                                   Style="{StaticResource MaterialDesignIconButton}"
+                                   Width="40"
+                                   Height="40"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,8,0"
+                                   Click="ScrollLeft_Click"
+                                   Tag="NewReleasesScroller"
+                                   Opacity="0.7">
+                                <materialDesign:PackIcon Kind="ChevronLeft" Width="24" Height="24"/>
+                            </Button>
+                            
+                            <ScrollViewer Grid.Column="1"
+                                         x:Name="NewReleasesScroller"
+                                         HorizontalScrollBarVisibility="Hidden"
+                                         VerticalScrollBarVisibility="Disabled"
+                                         PanningMode="HorizontalOnly"
+                                         PreviewMouseWheel="ScrollViewer_PreviewMouseWheel">
+                            <ItemsControl ItemsSource="{Binding NewReleases}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <materialDesign:Card Width="160" 
+                                                           Height="240" 
+                                                           Margin="0,0,16,0"
+                                                           UniformCornerRadius="8"
+                                                           Style="{StaticResource NoBorderCard}"
+                                                           Cursor="Hand">
+                                            <materialDesign:Card.InputBindings>
+                                                <MouseBinding MouseAction="LeftClick"
+                                                             Command="{Binding DataContext.ViewAlbumCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                             CommandParameter="{Binding}"/>
+                                            </materialDesign:Card.InputBindings>
+                                            <Grid>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="160"/>
+                                                    <RowDefinition Height="*"/>
+                                                </Grid.RowDefinitions>
+                                                
+                                                <Grid Grid.Row="0">
+                                                    <controls:CachedImage ImageUrl="{Binding CoverMedium}" 
+                                                          Stretch="UniformToFill"/>
+                                                    
+                                                    <Border Background="#80000000" 
+                                                           Opacity="0"
+                                                           x:Name="HoverOverlay">
+                                                        <Border.Triggers>
+                                                            <EventTrigger RoutedEvent="MouseEnter">
+                                                                <BeginStoryboard>
+                                                                    <Storyboard>
+                                                                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                                       To="1"
+                                                                                       Duration="0:0:0.2"/>
+                                                                    </Storyboard>
+                                                                </BeginStoryboard>
+                                                            </EventTrigger>
+                                                            <EventTrigger RoutedEvent="MouseLeave">
+                                                                <BeginStoryboard>
+                                                                    <Storyboard>
+                                                                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                                       To="0"
+                                                                                       Duration="0:0:0.2"/>
+                                                                    </Storyboard>
+                                                                </BeginStoryboard>
+                                                            </EventTrigger>
+                                                        </Border.Triggers>
+                                                        
+                                                        <Button Style="{StaticResource MaterialDesignFloatingActionButton}"
+                                                               Width="48"
+                                                               Height="48"
+                                                               HorizontalAlignment="Center"
+                                                               VerticalAlignment="Center"
+                                                               Command="{Binding DataContext.DownloadAlbumCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                               CommandParameter="{Binding}"
+                                                               ToolTip="Download Album">
+                                                            <materialDesign:PackIcon Kind="Download" 
+                                                                                   Width="24" 
+                                                                                   Height="24"/>
+                                                        </Button>
+                                                    </Border>
+                                                </Grid>
+                                                
+                                                <StackPanel Grid.Row="1" 
+                                                           Margin="12,8"
+                                                           VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Title}" 
+                                                              FontWeight="SemiBold"
+                                                              FontSize="13"
+                                                              TextTrimming="CharacterEllipsis"/>
+                                                    <TextBlock FontSize="11"
+                                                              Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                              TextTrimming="CharacterEllipsis"
+                                                              Margin="0,4,0,0"
+                                                              Cursor="Hand">
+                                                        <Hyperlink Command="{Binding DataContext.ViewArtistCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                  CommandParameter="{Binding Artist}"
+                                                                  TextDecorations="None"
+                                                                  Foreground="{DynamicResource MaterialDesignBodyLight}">
+                                                            <Run Text="{Binding Artist.Name, Mode=OneWay}"/>
+                                                        </Hyperlink>
+                                                    </TextBlock>
+                                                </StackPanel>
+                                            </Grid>
+                                        </materialDesign:Card>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                            
+                            <Button Grid.Column="2"
+                                   Style="{StaticResource MaterialDesignIconButton}"
+                                   Width="40"
+                                   Height="40"
+                                   VerticalAlignment="Center"
+                                   Margin="8,0,0,0"
+                                   Click="ScrollRight_Click"
+                                   Tag="NewReleasesScroller"
+                                   Opacity="0.7">
+                                <materialDesign:PackIcon Kind="ChevronRight" Width="24" Height="24"/>
+                            </Button>
+                        </Grid>
+                        
+                        <!-- Top Albums -->
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0"
+                                      Text="Top Albums"
+                                      FontSize="20"
+                                      FontWeight="SemiBold"
+                                      VerticalAlignment="Center"/>
+                            <Button Grid.Column="1"
+                                   Content="View all"
+                                   Style="{StaticResource MaterialDesignFlatButton}"
+                                   Command="{Binding ViewAllCommand}"
+                                   CommandParameter="TopAlbums"
+                                   FontSize="13"
+                                   Padding="12,6"/>
+                        </Grid>
+                        
+                        <Grid Margin="0,0,0,32">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <Button Grid.Column="0"
+                                   Style="{StaticResource MaterialDesignIconButton}"
+                                   Width="40"
+                                   Height="40"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,8,0"
+                                   Click="ScrollLeft_Click"
+                                   Tag="TopAlbumsScroller"
+                                   Opacity="0.7">
+                                <materialDesign:PackIcon Kind="ChevronLeft" Width="24" Height="24"/>
+                            </Button>
+                            
+                            <ScrollViewer Grid.Column="1"
+                                         x:Name="TopAlbumsScroller"
+                                         HorizontalScrollBarVisibility="Hidden"
+                                         VerticalScrollBarVisibility="Disabled"
+                                         PanningMode="HorizontalOnly"
+                                         PreviewMouseWheel="ScrollViewer_PreviewMouseWheel">
+                                <ItemsControl ItemsSource="{Binding TopAlbums}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <materialDesign:Card Width="160" 
+                                                               Height="240" 
+                                                               Margin="0,0,16,0"
+                                                               UniformCornerRadius="8"
+                                                               Style="{StaticResource NoBorderCard}"
+                                                               Cursor="Hand">
+                                                <materialDesign:Card.InputBindings>
+                                                    <MouseBinding MouseAction="LeftClick"
+                                                                 Command="{Binding DataContext.ViewAlbumCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                 CommandParameter="{Binding}"/>
+                                                </materialDesign:Card.InputBindings>
+                                                <Grid>
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="160"/>
+                                                        <RowDefinition Height="*"/>
+                                                    </Grid.RowDefinitions>
+                                                    
+                                                    <Grid Grid.Row="0">
+                                                        <controls:CachedImage ImageUrl="{Binding CoverMedium}" 
+                                                                             Stretch="UniformToFill"/>
+                                                        
+                                                        <Border Background="#80000000" 
+                                                               Opacity="0"
+                                                               x:Name="HoverOverlay">
+                                                            <Border.Triggers>
+                                                                <EventTrigger RoutedEvent="MouseEnter">
+                                                                    <BeginStoryboard>
+                                                                        <Storyboard>
+                                                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                                           To="1"
+                                                                                           Duration="0:0:0.2"/>
+                                                                        </Storyboard>
+                                                                    </BeginStoryboard>
+                                                                </EventTrigger>
+                                                                <EventTrigger RoutedEvent="MouseLeave">
+                                                                    <BeginStoryboard>
+                                                                        <Storyboard>
+                                                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                                           To="0"
+                                                                                           Duration="0:0:0.2"/>
+                                                                        </Storyboard>
+                                                                    </BeginStoryboard>
+                                                                </EventTrigger>
+                                                            </Border.Triggers>
+                                                            
+                                                            <Button Style="{StaticResource MaterialDesignFloatingActionButton}"
+                                                                   Width="48"
+                                                                   Height="48"
+                                                                   HorizontalAlignment="Center"
+                                                                   VerticalAlignment="Center"
+                                                                   Command="{Binding DataContext.DownloadAlbumCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                   CommandParameter="{Binding}"
+                                                                   ToolTip="Download Album">
+                                                                <materialDesign:PackIcon Kind="Download" 
+                                                                                       Width="24" 
+                                                                                       Height="24"/>
+                                                            </Button>
+                                                        </Border>
+                                                    </Grid>
+                                                    
+                                                    <StackPanel Grid.Row="1" 
+                                                               Margin="12,8"
+                                                               VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding Title}" 
+                                                                  FontWeight="SemiBold"
+                                                                  FontSize="13"
+                                                                  TextTrimming="CharacterEllipsis"/>
+                                                        <TextBlock Text="{Binding Artist.Name}" 
+                                                                  FontSize="11"
+                                                                  Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                                  TextTrimming="CharacterEllipsis"
+                                                                  Margin="0,4,0,0"/>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </materialDesign:Card>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                            
+                            <Button Grid.Column="2"
+                                   Style="{StaticResource MaterialDesignIconButton}"
+                                   Width="40"
+                                   Height="40"
+                                   VerticalAlignment="Center"
+                                   Margin="8,0,0,0"
+                                   Click="ScrollRight_Click"
+                                   Tag="TopAlbumsScroller"
+                                   Opacity="0.7">
+                                <materialDesign:PackIcon Kind="ChevronRight" Width="24" Height="24"/>
+                            </Button>
+                        </Grid>
+                        
+                        <!-- Popular Playlists -->
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0"
+                                      Text="Popular Playlists"
+                                      FontSize="20"
+                                      FontWeight="SemiBold"
+                                      VerticalAlignment="Center"/>
+                            <Button Grid.Column="1"
+                                   Content="View all"
+                                   Style="{StaticResource MaterialDesignFlatButton}"
+                                   Command="{Binding ViewAllCommand}"
+                                   CommandParameter="PopularPlaylists"
+                                   FontSize="13"
+                                   Padding="12,6"/>
+                        </Grid>
+                        
+                        <Grid Margin="0,0,0,32">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <Button Grid.Column="0"
+                                   Style="{StaticResource MaterialDesignIconButton}"
+                                   Width="40"
+                                   Height="40"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,8,0"
+                                   Click="ScrollLeft_Click"
+                                   Tag="PopularPlaylistsScroller"
+                                   Opacity="0.7">
+                                <materialDesign:PackIcon Kind="ChevronLeft" Width="24" Height="24"/>
+                            </Button>
+                            
+                            <ScrollViewer Grid.Column="1"
+                                         x:Name="PopularPlaylistsScroller"
+                                         HorizontalScrollBarVisibility="Hidden"
+                                         VerticalScrollBarVisibility="Disabled"
+                                         PanningMode="HorizontalOnly"
+                                         PreviewMouseWheel="ScrollViewer_PreviewMouseWheel">
+                                <ItemsControl ItemsSource="{Binding PopularPlaylists}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <materialDesign:Card Width="160" 
+                                                               Height="240" 
+                                                               Margin="0,0,16,0"
+                                                               UniformCornerRadius="8"
+                                                               Style="{StaticResource NoBorderCard}"
+                                                               Cursor="Hand">
+                                                <materialDesign:Card.InputBindings>
+                                                    <MouseBinding MouseAction="LeftClick"
+                                                                 Command="{Binding DataContext.ViewPlaylistCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                 CommandParameter="{Binding}"/>
+                                                </materialDesign:Card.InputBindings>
+                                                <Grid>
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="160"/>
+                                                        <RowDefinition Height="*"/>
+                                                    </Grid.RowDefinitions>
+                                                    
+                                                    <Grid Grid.Row="0">
+                                                        <controls:CachedImage ImageUrl="{Binding PictureMedium}" 
+                                                                             Stretch="UniformToFill"/>
+                                                        
+                                                        <Border Background="#80000000" 
+                                                               Opacity="0"
+                                                               x:Name="HoverOverlay">
+                                                            <Border.Triggers>
+                                                                <EventTrigger RoutedEvent="MouseEnter">
+                                                                    <BeginStoryboard>
+                                                                        <Storyboard>
+                                                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                                           To="1"
+                                                                                           Duration="0:0:0.2"/>
+                                                                        </Storyboard>
+                                                                    </BeginStoryboard>
+                                                                </EventTrigger>
+                                                                <EventTrigger RoutedEvent="MouseLeave">
+                                                                    <BeginStoryboard>
+                                                                        <Storyboard>
+                                                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                                           To="0"
+                                                                                           Duration="0:0:0.2"/>
+                                                                        </Storyboard>
+                                                                    </BeginStoryboard>
+                                                                </EventTrigger>
+                                                            </Border.Triggers>
+                                                            
+                                                            <Button Style="{StaticResource MaterialDesignFloatingActionButton}"
+                                                                   Width="48"
+                                                                   Height="48"
+                                                                   HorizontalAlignment="Center"
+                                                                   VerticalAlignment="Center"
+                                                                   Command="{Binding DataContext.DownloadPlaylistCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                   CommandParameter="{Binding}"
+                                                                   ToolTip="Download Playlist">
+                                                                <materialDesign:PackIcon Kind="Download" 
+                                                                                       Width="24" 
+                                                                                       Height="24"/>
+                                                            </Button>
+                                                        </Border>
+                                                    </Grid>
+                                                    
+                                                    <StackPanel Grid.Row="1" 
+                                                               Margin="12,8"
+                                                               VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding Title}" 
+                                                                  FontWeight="SemiBold"
+                                                                  FontSize="13"
+                                                                  TextTrimming="CharacterEllipsis"/>
+                                                        <TextBlock Text="{Binding User.Name}" 
+                                                                  FontSize="11"
+                                                                  Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                                  TextTrimming="CharacterEllipsis"
+                                                                  Margin="0,4,0,0"/>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </materialDesign:Card>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                            
+                            <Button Grid.Column="2"
+                                   Style="{StaticResource MaterialDesignIconButton}"
+                                   Width="40"
+                                   Height="40"
+                                   VerticalAlignment="Center"
+                                   Margin="8,0,0,0"
+                                   Click="ScrollRight_Click"
+                                   Tag="PopularPlaylistsScroller"
+                                   Opacity="0.7">
+                                <materialDesign:PackIcon Kind="ChevronRight" Width="24" Height="24"/>
+                            </Button>
+                        </Grid>
+                        
+                        <!-- Most Streamed Artists -->
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0"
+                                      Text="Most Streamed Artists"
+                                      FontSize="20"
+                                      FontWeight="SemiBold"
+                                      VerticalAlignment="Center"/>
+                            <Button Grid.Column="1"
+                                   Content="View all"
+                                   Style="{StaticResource MaterialDesignFlatButton}"
+                                   Command="{Binding ViewAllCommand}"
+                                   CommandParameter="MostStreamedArtists"
+                                   FontSize="13"
+                                   Padding="12,6"/>
+                        </Grid>
+                        
+                        <Grid Margin="0,0,0,32">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <Button Grid.Column="0"
+                                   Style="{StaticResource MaterialDesignIconButton}"
+                                   Width="40"
+                                   Height="40"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,8,0"
+                                   Click="ScrollLeft_Click"
+                                   Tag="MostStreamedArtistsScroller"
+                                   Opacity="0.7">
+                                <materialDesign:PackIcon Kind="ChevronLeft" Width="24" Height="24"/>
+                            </Button>
+                            
+                            <ScrollViewer Grid.Column="1"
+                                         x:Name="MostStreamedArtistsScroller"
+                                         HorizontalScrollBarVisibility="Hidden"
+                                         VerticalScrollBarVisibility="Disabled"
+                                         PanningMode="HorizontalOnly"
+                                         PreviewMouseWheel="ScrollViewer_PreviewMouseWheel">
+                                <ItemsControl ItemsSource="{Binding MostStreamedArtists}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <materialDesign:Card Width="140" 
+                                                               Height="180" 
+                                                               Margin="0,0,16,0"
+                                                               UniformCornerRadius="8"
+                                                               Style="{StaticResource NoBorderCard}"
+                                                               Cursor="Hand">
+                                                <materialDesign:Card.InputBindings>
+                                                    <MouseBinding MouseAction="LeftClick"
+                                                                 Command="{Binding DataContext.ViewArtistCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                 CommandParameter="{Binding}"/>
+                                                </materialDesign:Card.InputBindings>
+                                                <StackPanel>
+                                                    <Grid Width="140" Height="140" Margin="0,0,0,8">
+                                                        <controls:CachedImage ImageUrl="{Binding PictureMedium}" 
+                                                                             Width="120" 
+                                                                             Height="120"
+                                                                             Margin="10"
+                                                                             Stretch="UniformToFill">
+                                                            <controls:CachedImage.Clip>
+                                                                <EllipseGeometry Center="60,60" RadiusX="60" RadiusY="60"/>
+                                                            </controls:CachedImage.Clip>
+                                                        </controls:CachedImage>
+                                                    </Grid>
+                                                    
+                                                    <TextBlock Text="{Binding Name}" 
+                                                              FontWeight="SemiBold"
+                                                              FontSize="13"
+                                                              TextTrimming="CharacterEllipsis"
+                                                              TextAlignment="Center"
+                                                              Margin="8,0"/>
+                                                </StackPanel>
+                                            </materialDesign:Card>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                            
+                            <Button Grid.Column="2"
+                                   Style="{StaticResource MaterialDesignIconButton}"
+                                   Width="40"
+                                   Height="40"
+                                   VerticalAlignment="Center"
+                                   Margin="8,0,0,0"
+                                   Click="ScrollRight_Click"
+                                   Tag="MostStreamedArtistsScroller"
+                                   Opacity="0.7">
+                                <materialDesign:PackIcon Kind="ChevronRight" Width="24" Height="24"/>
+                            </Button>
+                        </Grid>
+                        
+                    </StackPanel>
+                </ScrollViewer>
+                
+                <!-- No Results Message -->
+                <StackPanel HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           Visibility="{Binding ShowNoResults, Converter={StaticResource BooleanToVisibilityConverter}}"
+                           Margin="0,100,0,0">
+                    <materialDesign:PackIcon Kind="MagnifyClose" 
+                                           Width="64" 
+                                           Height="64"
+                                           HorizontalAlignment="Center"
+                                           Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                           Opacity="0.5"/>
+                    <TextBlock Text="No results found"
+                              FontSize="18"
+                              FontWeight="SemiBold"
+                              HorizontalAlignment="Center"
+                              Margin="0,16,0,8"/>
+                    <TextBlock Text="Try a different search term"
+                              FontSize="14"
+                              Foreground="{DynamicResource MaterialDesignBodyLight}"
+                              HorizontalAlignment="Center"/>
+                </StackPanel>
+                
+                <!-- SECTIONED RESULTS (for "All" tab) -->
+                <StackPanel Visibility="{Binding ShowSections, Converter={StaticResource BooleanToVisibilityConverter}}"
+                           Margin="24,0,24,24">
+                    
+                    <!-- Artists Section -->
+                    <StackPanel Margin="0,0,0,32">
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0"
+                                      Text="Artists"
+                                      FontSize="20"
+                                      FontWeight="SemiBold"
+                                      VerticalAlignment="Center"/>
+                            <Button Grid.Column="1"
+                                   Content="View all"
+                                   Style="{StaticResource MaterialDesignFlatButton}"
+                                   Command="{Binding ViewAllCommand}"
+                                   CommandParameter="Artists"
+                                   FontSize="13"
+                                   Padding="12,6"
+                                   Visibility="{Binding ArtistResults.Count, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                        </Grid>
+                        
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <Button Grid.Column="0"
+                                   Style="{StaticResource MaterialDesignIconButton}"
+                                   Width="40"
+                                   Height="40"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,8,0"
+                                   Click="ScrollLeft_Click"
+                                   Tag="ArtistsScroller"
+                                   Opacity="0.7">
+                                <materialDesign:PackIcon Kind="ChevronLeft" Width="24" Height="24"/>
+                            </Button>
+                            
+                            <ScrollViewer Grid.Column="1"
+                                         x:Name="ArtistsScroller"
+                                         HorizontalScrollBarVisibility="Hidden"
+                                         VerticalScrollBarVisibility="Disabled"
+                                         PanningMode="HorizontalOnly"
+                                         PreviewMouseWheel="ScrollViewer_PreviewMouseWheel">
+                                <ItemsControl ItemsSource="{Binding ArtistResults}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Style="{StaticResource MaterialDesignFlatButton}"
+                                                   Padding="0"
+                                                   Width="140"
+                                                   Height="180"
+                                                   Margin="0,0,16,0"
+                                                   VerticalContentAlignment="Stretch"
+                                                   HorizontalContentAlignment="Stretch"
+                                                   Command="{Binding DataContext.ViewArtistCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                   CommandParameter="{Binding}">
+                                                <materialDesign:Card Width="140" 
+                                                                   Height="180"
+                                                                   UniformCornerRadius="8"
+                                                                   Style="{StaticResource NoBorderCard}">
+                                                    <StackPanel>
+                                                        <!-- Circular Artist Image -->
+                                                        <Grid Width="140" Height="140" Margin="0,0,0,8">
+                                                            <controls:CachedImage ImageUrl="{Binding PictureMedium}" 
+                                                                    Width="120" 
+                                                                    Height="120"
+                                                                    Margin="10"
+                                                                    Stretch="UniformToFill">
+                                                                <controls:CachedImage.Clip>
+                                                                    <EllipseGeometry Center="60,60" RadiusX="60" RadiusY="60"/>
+                                                                </controls:CachedImage.Clip>
+                                                            </controls:CachedImage>
+                                                        </Grid>
+                                                        
+                                                        <!-- Artist Name -->
+                                                        <TextBlock Text="{Binding Name}" 
+                                                                  FontWeight="SemiBold"
+                                                                  FontSize="13"
+                                                                  TextTrimming="CharacterEllipsis"
+                                                                  TextAlignment="Center"
+                                                                  Margin="8,0"/>
+                                                    </StackPanel>
+                                                </materialDesign:Card>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                            
+                            <Button Grid.Column="2"
+                                   Style="{StaticResource MaterialDesignIconButton}"
+                                   Width="40"
+                                   Height="40"
+                                   VerticalAlignment="Center"
+                                   Margin="8,0,0,0"
+                                   Click="ScrollRight_Click"
+                                   Tag="ArtistsScroller"
+                                   Opacity="0.7">
+                                <materialDesign:PackIcon Kind="ChevronRight" Width="24" Height="24"/>
+                            </Button>
+                        </Grid>
+                    </StackPanel>
+
+                    
+                    <!-- Albums Section -->
+                    <StackPanel Margin="0,0,0,32">
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0"
+                                      Text="Albums"
+                                      FontSize="20"
+                                      FontWeight="SemiBold"
+                                      VerticalAlignment="Center"/>
+                            <Button Grid.Column="1"
+                                   Content="View all"
+                                   Style="{StaticResource MaterialDesignFlatButton}"
+                                   Command="{Binding ViewAllCommand}"
+                                   CommandParameter="Albums"
+                                   FontSize="13"
+                                   Padding="12,6"
+                                   Visibility="{Binding AlbumResults.Count, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                        </Grid>
+                        
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <Button Grid.Column="0"
+                                   Style="{StaticResource MaterialDesignIconButton}"
+                                   Width="40"
+                                   Height="40"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,8,0"
+                                   Click="ScrollLeft_Click"
+                                   Tag="AlbumsScroller"
+                                   Opacity="0.7">
+                                <materialDesign:PackIcon Kind="ChevronLeft" Width="24" Height="24"/>
+                            </Button>
+                            
+                            <ScrollViewer Grid.Column="1"
+                                         x:Name="AlbumsScroller"
+                                         HorizontalScrollBarVisibility="Hidden"
+                                         VerticalScrollBarVisibility="Disabled"
+                                         PanningMode="HorizontalOnly"
+                                         PreviewMouseWheel="ScrollViewer_PreviewMouseWheel">
+                                <ItemsControl ItemsSource="{Binding AlbumResults}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <materialDesign:Card Width="160" 
+                                                               Height="240" 
+                                                               Margin="0,0,16,0"
+                                                               UniformCornerRadius="8"
+                                                               Style="{StaticResource NoBorderCard}"
+                                                               Cursor="Hand">
+                                                <materialDesign:Card.InputBindings>
+                                                    <MouseBinding MouseAction="LeftClick"
+                                                                 Command="{Binding DataContext.ViewAlbumCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                 CommandParameter="{Binding}"/>
+                                                </materialDesign:Card.InputBindings>
+                                                <Grid>
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="160"/>
+                                                        <RowDefinition Height="*"/>
+                                                    </Grid.RowDefinitions>
+                                                    
+                                                    <Grid Grid.Row="0">
+                                                        <controls:CachedImage ImageUrl="{Binding CoverMedium}" 
+                                                              Stretch="UniformToFill"/>
+                                                        
+                                                        <!-- Hover Overlay with Download Button -->
+                                                        <Border Background="#80000000" 
+                                                               Opacity="0"
+                                                               x:Name="HoverOverlay">
+                                                            <Border.Triggers>
+                                                                <EventTrigger RoutedEvent="MouseEnter">
+                                                                    <BeginStoryboard>
+                                                                        <Storyboard>
+                                                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                                           To="1"
+                                                                                           Duration="0:0:0.2"/>
+                                                                        </Storyboard>
+                                                                    </BeginStoryboard>
+                                                                </EventTrigger>
+                                                                <EventTrigger RoutedEvent="MouseLeave">
+                                                                    <BeginStoryboard>
+                                                                        <Storyboard>
+                                                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                                           To="0"
+                                                                                           Duration="0:0:0.2"/>
+                                                                        </Storyboard>
+                                                                    </BeginStoryboard>
+                                                                </EventTrigger>
+                                                            </Border.Triggers>
+                                                            
+                                                            <Button Style="{StaticResource MaterialDesignFloatingActionButton}"
+                                                                   Width="48"
+                                                                   Height="48"
+                                                                   HorizontalAlignment="Center"
+                                                                   VerticalAlignment="Center"
+                                                                   Command="{Binding DataContext.DownloadAlbumCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                   CommandParameter="{Binding}"
+                                                                   ToolTip="Download Album">
+                                                                <materialDesign:PackIcon Kind="Download" 
+                                                                                       Width="24" 
+                                                                                       Height="24"/>
+                                                            </Button>
+                                                        </Border>
+                                                    </Grid>
+                                                    
+                                                    <StackPanel Grid.Row="1" 
+                                                               Margin="12,8"
+                                                               VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding Title}" 
+                                                                  FontWeight="SemiBold"
+                                                                  FontSize="13"
+                                                                  TextTrimming="CharacterEllipsis"/>
+                                                        <TextBlock Text="{Binding Artist.Name}" 
+                                                                  FontSize="11"
+                                                                  Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                                  TextTrimming="CharacterEllipsis"
+                                                                  Margin="0,4,0,0"/>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </materialDesign:Card>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                            
+                            <Button Grid.Column="2"
+                                   Style="{StaticResource MaterialDesignIconButton}"
+                                   Width="40"
+                                   Height="40"
+                                   VerticalAlignment="Center"
+                                   Margin="8,0,0,0"
+                                   Click="ScrollRight_Click"
+                                   Tag="AlbumsScroller"
+                                   Opacity="0.7">
+                                <materialDesign:PackIcon Kind="ChevronRight" Width="24" Height="24"/>
+                            </Button>
+                        </Grid>
+                    </StackPanel>
+
+                    
+                    <!-- Playlists Section -->
+                    <StackPanel Margin="0,0,0,32">
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0"
+                                      Text="Playlists"
+                                      FontSize="20"
+                                      FontWeight="SemiBold"
+                                      VerticalAlignment="Center"/>
+                            <Button Grid.Column="1"
+                                   Content="View all"
+                                   Style="{StaticResource MaterialDesignFlatButton}"
+                                   Command="{Binding ViewAllCommand}"
+                                   CommandParameter="Playlists"
+                                   FontSize="13"
+                                   Padding="12,6"
+                                   Visibility="{Binding PlaylistResults.Count, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                        </Grid>
+                        
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <Button Grid.Column="0"
+                                   Style="{StaticResource MaterialDesignIconButton}"
+                                   Width="40"
+                                   Height="40"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,8,0"
+                                   Click="ScrollLeft_Click"
+                                   Tag="PlaylistsScroller"
+                                   Opacity="0.7">
+                                <materialDesign:PackIcon Kind="ChevronLeft" Width="24" Height="24"/>
+                            </Button>
+                            
+                            <ScrollViewer Grid.Column="1"
+                                         x:Name="PlaylistsScroller"
+                                         HorizontalScrollBarVisibility="Hidden"
+                                         VerticalScrollBarVisibility="Disabled"
+                                         PanningMode="HorizontalOnly"
+                                         PreviewMouseWheel="ScrollViewer_PreviewMouseWheel">
+                                <ItemsControl ItemsSource="{Binding PlaylistResults}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <materialDesign:Card Width="160" 
+                                                               Height="240" 
+                                                               Margin="0,0,16,0"
+                                                               UniformCornerRadius="8"
+                                                               Style="{StaticResource NoBorderCard}">
+                                                <Grid>
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="160"/>
+                                                        <RowDefinition Height="*"/>
+                                                    </Grid.RowDefinitions>
+                                                    
+                                                    <Grid Grid.Row="0">
+                                                        <controls:CachedImage ImageUrl="{Binding PictureMedium}" 
+                                                              Stretch="UniformToFill"/>
+                                                        
+                                                        <!-- Hover Overlay with Download Button -->
+                                                        <Border Background="#80000000" 
+                                                               Opacity="0"
+                                                               x:Name="HoverOverlay">
+                                                            <Border.Triggers>
+                                                                <EventTrigger RoutedEvent="MouseEnter">
+                                                                    <BeginStoryboard>
+                                                                        <Storyboard>
+                                                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                                           To="1"
+                                                                                           Duration="0:0:0.2"/>
+                                                                        </Storyboard>
+                                                                    </BeginStoryboard>
+                                                                </EventTrigger>
+                                                                <EventTrigger RoutedEvent="MouseLeave">
+                                                                    <BeginStoryboard>
+                                                                        <Storyboard>
+                                                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                                           To="0"
+                                                                                           Duration="0:0:0.2"/>
+                                                                        </Storyboard>
+                                                                    </BeginStoryboard>
+                                                                </EventTrigger>
+                                                            </Border.Triggers>
+                                                            
+                                                            <Button Style="{StaticResource MaterialDesignFloatingActionButton}"
+                                                                   Width="48"
+                                                                   Height="48"
+                                                                   HorizontalAlignment="Center"
+                                                                   VerticalAlignment="Center"
+                                                                   Command="{Binding DataContext.DownloadPlaylistCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                   CommandParameter="{Binding}"
+                                                                   ToolTip="Download Playlist">
+                                                                <materialDesign:PackIcon Kind="Download" 
+                                                                                       Width="24" 
+                                                                                       Height="24"/>
+                                                            </Button>
+                                                        </Border>
+                                                    </Grid>
+                                                    
+                                                    <StackPanel Grid.Row="1" 
+                                                               Margin="12,8"
+                                                               VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding Title}" 
+                                                                  FontWeight="SemiBold"
+                                                                  FontSize="13"
+                                                                  TextTrimming="CharacterEllipsis"/>
+                                                        <TextBlock FontSize="11"
+                                                                  Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                                  Margin="0,4,0,0">
+                                                            <Run Text="{Binding TrackCount}"/>
+                                                            <Run Text="tracks"/>
+                                                        </TextBlock>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </materialDesign:Card>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                            
+                            <Button Grid.Column="2"
+                                   Style="{StaticResource MaterialDesignIconButton}"
+                                   Width="40"
+                                   Height="40"
+                                   VerticalAlignment="Center"
+                                   Margin="8,0,0,0"
+                                   Click="ScrollRight_Click"
+                                   Tag="PlaylistsScroller"
+                                   Opacity="0.7">
+                                <materialDesign:PackIcon Kind="ChevronRight" Width="24" Height="24"/>
+                            </Button>
+                        </Grid>
+                    </StackPanel>
+                    
+                </StackPanel>
+                <!-- END SECTIONED RESULTS -->
+
+                
+                <!-- FILTERED RESULTS (for specific tabs) -->
+                <StackPanel Visibility="{Binding ShowFilteredResults, Converter={StaticResource BooleanToVisibilityConverter}}"
+                           Margin="24,0,24,24">
+                    
+                    <!-- Tracks Grid -->
+                    <ItemsControl ItemsSource="{Binding TrackResults}"
+                                 Visibility="{Binding IsTracksTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="{DynamicResource MaterialDesignDivider}"
+                                       BorderThickness="0,0,0,1"
+                                       Padding="8"
+                                       Background="Transparent">
+                                    <Border.InputBindings>
+                                        <MouseBinding MouseAction="LeftDoubleClick"
+                                                     Command="{Binding DataContext.DownloadTrackCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                     CommandParameter="{Binding}"/>
+                                    </Border.InputBindings>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="48"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        
+                                        <!-- Album Art -->
+                                        <controls:CachedImage Grid.Column="0"
+                                                             ImageUrl="{Binding CoverMedium}"
+                                                             Width="48"
+                                                             Height="48"
+                                                             Stretch="UniformToFill"/>
+                                        
+                                        <!-- Track Info -->
+                                        <StackPanel Grid.Column="1" 
+                                                   Margin="12,0,12,0"
+                                                   VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Title}"
+                                                      FontWeight="Medium"
+                                                      FontSize="14"
+                                                      TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding Artist.Name}"
+                                                      FontSize="12"
+                                                      Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                      TextTrimming="CharacterEllipsis"
+                                                      Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        
+                                        <!-- Duration -->
+                                        <TextBlock Grid.Column="2"
+                                                  Text="{Binding FormattedDuration}"
+                                                  FontSize="13"
+                                                  Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                  VerticalAlignment="Center"
+                                                  Margin="0,0,16,0"/>
+                                        
+                                        <!-- Download Button -->
+                                        <Button Grid.Column="3"
+                                               Style="{StaticResource MaterialDesignIconButton}"
+                                               Width="32"
+                                               Height="32"
+                                               Command="{Binding DataContext.DownloadTrackCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                               CommandParameter="{Binding}"
+                                               ToolTip="Download Track">
+                                            <materialDesign:PackIcon Kind="Download" Width="18" Height="18"/>
+                                        </Button>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    
+                    <!-- Albums Grid -->
+                    <ItemsControl ItemsSource="{Binding AlbumResults}"
+                                 Visibility="{Binding IsAlbumsTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <materialDesign:Card Width="180" 
+                                                   Height="260" 
+                                                   Margin="0,0,16,16"
+                                                   UniformCornerRadius="8"
+                                                   Style="{StaticResource NoBorderCard}"
+                                                   Cursor="Hand">
+                                    <materialDesign:Card.InputBindings>
+                                        <MouseBinding MouseAction="LeftClick"
+                                                     Command="{Binding DataContext.ViewAlbumCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                     CommandParameter="{Binding}"/>
+                                    </materialDesign:Card.InputBindings>
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="180"/>
+                                            <RowDefinition Height="*"/>
+                                        </Grid.RowDefinitions>
+                                        
+                                        <Grid Grid.Row="0">
+                                            <controls:CachedImage ImageUrl="{Binding CoverMedium}" 
+                                                  Stretch="UniformToFill"/>
+                                            
+                                            <Border Background="#80000000" 
+                                                   Opacity="0"
+                                                   x:Name="HoverOverlay">
+                                                <Border.Triggers>
+                                                    <EventTrigger RoutedEvent="MouseEnter">
+                                                        <BeginStoryboard>
+                                                            <Storyboard>
+                                                                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                               To="1"
+                                                                               Duration="0:0:0.2"/>
+                                                            </Storyboard>
+                                                        </BeginStoryboard>
+                                                    </EventTrigger>
+                                                    <EventTrigger RoutedEvent="MouseLeave">
+                                                        <BeginStoryboard>
+                                                            <Storyboard>
+                                                                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                               To="0"
+                                                                               Duration="0:0:0.2"/>
+                                                            </Storyboard>
+                                                        </BeginStoryboard>
+                                                    </EventTrigger>
+                                                </Border.Triggers>
+                                                
+                                                <Button Style="{StaticResource MaterialDesignFloatingActionButton}"
+                                                       Width="56"
+                                                       Height="56"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       Command="{Binding DataContext.DownloadAlbumCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                       CommandParameter="{Binding}"
+                                                       ToolTip="Download Album">
+                                                    <materialDesign:PackIcon Kind="Download" 
+                                                                           Width="28" 
+                                                                           Height="28"/>
+                                                </Button>
+                                            </Border>
+                                        </Grid>
+                                        
+                                        <StackPanel Grid.Row="1" 
+                                                   Margin="12,8"
+                                                   VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Title}" 
+                                                      FontWeight="SemiBold"
+                                                      FontSize="14"
+                                                      TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding Artist.Name}" 
+                                                      FontSize="12"
+                                                      Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                      TextTrimming="CharacterEllipsis"
+                                                      Margin="0,4,0,0"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </materialDesign:Card>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    
+                    <!-- Artists Grid -->
+                    <ItemsControl ItemsSource="{Binding ArtistResults}"
+                                 Visibility="{Binding IsArtistsTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Style="{StaticResource MaterialDesignFlatButton}"
+                                       Padding="0"
+                                       Width="160"
+                                       Height="200"
+                                       Margin="0,0,16,16"
+                                       VerticalContentAlignment="Stretch"
+                                       HorizontalContentAlignment="Stretch"
+                                       Command="{Binding DataContext.ViewArtistCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                       CommandParameter="{Binding}">
+                                    <materialDesign:Card Width="160" 
+                                                       Height="200"
+                                                       UniformCornerRadius="8"
+                                                       Style="{StaticResource NoBorderCard}">
+                                        <StackPanel>
+                                            <Grid Width="160" Height="160" Margin="0,0,0,8">
+                                                <controls:CachedImage ImageUrl="{Binding PictureMedium}" 
+                                                        Width="140" 
+                                                        Height="140"
+                                                        Margin="10"
+                                                        Stretch="UniformToFill">
+                                                    <controls:CachedImage.Clip>
+                                                        <EllipseGeometry Center="70,70" RadiusX="70" RadiusY="70"/>
+                                                    </controls:CachedImage.Clip>
+                                                </controls:CachedImage>
+                                            </Grid>
+                                            
+                                            <TextBlock Text="{Binding Name}" 
+                                                      FontWeight="SemiBold"
+                                                      FontSize="14"
+                                                      TextTrimming="CharacterEllipsis"
+                                                      TextAlignment="Center"
+                                                      Margin="8,0"/>
+                                        </StackPanel>
+                                    </materialDesign:Card>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    
+                    <!-- Playlists Grid -->
+                    <ItemsControl ItemsSource="{Binding PlaylistResults}"
+                                 Visibility="{Binding IsPlaylistsTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <materialDesign:Card Width="180" 
+                                                   Height="260" 
+                                                   Margin="0,0,16,16"
+                                                   UniformCornerRadius="8"
+                                                   Style="{StaticResource NoBorderCard}">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="180"/>
+                                            <RowDefinition Height="*"/>
+                                        </Grid.RowDefinitions>
+                                        
+                                        <Grid Grid.Row="0">
+                                            <controls:CachedImage ImageUrl="{Binding PictureMedium}" 
+                                                  Stretch="UniformToFill"/>
+                                            
+                                            <Border Background="#80000000" 
+                                                   Opacity="0"
+                                                   x:Name="HoverOverlay">
+                                                <Border.Triggers>
+                                                    <EventTrigger RoutedEvent="MouseEnter">
+                                                        <BeginStoryboard>
+                                                            <Storyboard>
+                                                                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                               To="1"
+                                                                               Duration="0:0:0.2"/>
+                                                            </Storyboard>
+                                                        </BeginStoryboard>
+                                                    </EventTrigger>
+                                                    <EventTrigger RoutedEvent="MouseLeave">
+                                                        <BeginStoryboard>
+                                                            <Storyboard>
+                                                                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                               To="0"
+                                                                               Duration="0:0:0.2"/>
+                                                            </Storyboard>
+                                                        </BeginStoryboard>
+                                                    </EventTrigger>
+                                                </Border.Triggers>
+                                                
+                                                <Button Style="{StaticResource MaterialDesignFloatingActionButton}"
+                                                       Width="56"
+                                                       Height="56"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       Command="{Binding DataContext.DownloadPlaylistCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                       CommandParameter="{Binding}"
+                                                       ToolTip="Download Playlist">
+                                                    <materialDesign:PackIcon Kind="Download" 
+                                                                           Width="28" 
+                                                                           Height="28"/>
+                                                </Button>
+                                            </Border>
+                                        </Grid>
+                                        
+                                        <StackPanel Grid.Row="1" 
+                                                   Margin="12,8"
+                                                   VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Title}" 
+                                                      FontWeight="SemiBold"
+                                                      FontSize="14"
+                                                      TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock FontSize="12"
+                                                      Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                      Margin="0,4,0,0">
+                                                <Run Text="{Binding TrackCount}"/>
+                                                <Run Text="tracks"/>
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </Grid>
+                                </materialDesign:Card>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    
+                </StackPanel>
+                <!-- END FILTERED RESULTS -->
+                
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

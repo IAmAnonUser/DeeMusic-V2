@@ -1,0 +1,162 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Setup Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.21'
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+    
+    - name: Install MinGW
+      run: choco install mingw -y
+    
+    - name: Install NSIS
+      run: choco install nsis -y
+    
+    - name: Get version from tag
+      id: version
+      shell: pwsh
+      run: |
+        $tag = "${{ github.ref_name }}"
+        $version = $tag -replace '^v', ''
+        echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+        echo "TAG=$tag" >> $env:GITHUB_OUTPUT
+        echo "Version: $version"
+        echo "Tag: $tag"
+    
+    - name: Update VERSION file
+      shell: pwsh
+      run: |
+        "${{ steps.version.outputs.VERSION }}" | Set-Content VERSION -NoNewline
+    
+    - name: Build release packages
+      shell: pwsh
+      run: |
+        .\scripts\build-release.ps1 -Version "${{ steps.version.outputs.VERSION }}" -SkipTests
+    
+    - name: Generate changelog
+      id: changelog
+      shell: pwsh
+      run: |
+        $previousTag = git describe --tags --abbrev=0 HEAD^ 2>$null
+        if ($previousTag) {
+          $changelog = git log "$previousTag..HEAD" --pretty=format:"- %s (%h)" --no-merges
+        } else {
+          $changelog = git log --pretty=format:"- %s (%h)" --no-merges
+        }
+        
+        $changelog = $changelog -join "`n"
+        
+        # Save to file for release notes
+        @"
+        ## What's Changed
+        
+        $changelog
+        
+        ## Download
+        
+        Choose the appropriate package for your needs:
+        
+        - **Installer (Recommended)**: Full installation with Start Menu shortcuts and Windows integration
+        - **Portable**: No installation required, run from any location
+        
+        ## Installation
+        
+        ### Using Installer
+        1. Download ``DeeMusic-Setup-${{ steps.version.outputs.VERSION }}.exe``
+        2. Run the installer
+        3. Follow the installation wizard
+        4. Launch DeeMusic from Start Menu
+        
+        ### Using Portable
+        1. Download ``DeeMusic-Portable-v${{ steps.version.outputs.VERSION }}-Windows-x64.zip``
+        2. Extract to desired location
+        3. Run ``DeeMusic.Desktop.exe``
+        
+        ## System Requirements
+        
+        - **OS**: Windows 10 or later (64-bit)
+        - **RAM**: 4 GB minimum, 8 GB recommended
+        - **Storage**: 100 MB for application + space for downloads
+        - **.NET**: .NET 8.0 Runtime (included in installer)
+        
+        ## Checksums
+        
+        See ``checksums-${{ steps.version.outputs.VERSION }}.txt`` for SHA256 hashes.
+        "@ | Out-File -FilePath "RELEASE_BODY.md" -Encoding UTF8
+    
+    - name: Find release artifacts
+      id: artifacts
+      shell: pwsh
+      run: |
+        $installer = Get-ChildItem -Path . -Filter "DeeMusic-Setup-*.exe" | Select-Object -First 1
+        $portable = Get-ChildItem -Path "dist" -Filter "DeeMusic-Portable-*.zip" | Select-Object -First 1
+        $checksums = Get-ChildItem -Path "dist" -Filter "checksums-*.txt" | Select-Object -First 1
+        
+        if ($installer) {
+          echo "INSTALLER_PATH=$($installer.FullName)" >> $env:GITHUB_OUTPUT
+          echo "INSTALLER_NAME=$($installer.Name)" >> $env:GITHUB_OUTPUT
+        }
+        
+        if ($portable) {
+          echo "PORTABLE_PATH=$($portable.FullName)" >> $env:GITHUB_OUTPUT
+          echo "PORTABLE_NAME=$($portable.Name)" >> $env:GITHUB_OUTPUT
+        }
+        
+        if ($checksums) {
+          echo "CHECKSUMS_PATH=$($checksums.FullName)" >> $env:GITHUB_OUTPUT
+          echo "CHECKSUMS_NAME=$($checksums.Name)" >> $env:GITHUB_OUTPUT
+        }
+    
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ steps.version.outputs.TAG }}
+        name: DeeMusic ${{ steps.version.outputs.VERSION }}
+        body_path: RELEASE_BODY.md
+        draft: false
+        prerelease: ${{ contains(steps.version.outputs.VERSION, '-') }}
+        files: |
+          ${{ steps.artifacts.outputs.INSTALLER_PATH }}
+          ${{ steps.artifacts.outputs.PORTABLE_PATH }}
+          ${{ steps.artifacts.outputs.CHECKSUMS_PATH }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Upload installer artifact
+      if: steps.artifacts.outputs.INSTALLER_PATH != ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: installer-${{ steps.version.outputs.VERSION }}
+        path: ${{ steps.artifacts.outputs.INSTALLER_PATH }}
+        retention-days: 90
+    
+    - name: Upload portable artifact
+      if: steps.artifacts.outputs.PORTABLE_PATH != ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: portable-${{ steps.version.outputs.VERSION }}
+        path: ${{ steps.artifacts.outputs.PORTABLE_PATH }}
+        retention-days: 90
