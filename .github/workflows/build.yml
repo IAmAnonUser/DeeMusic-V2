@@ -1,0 +1,71 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build:
+    name: Build Application
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.21'
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+    
+    - name: Install MinGW
+      run: choco install mingw -y
+    
+    - name: Verify CGO
+      run: |
+        go env CGO_ENABLED
+        go env CC
+    
+    - name: Get version
+      id: version
+      shell: pwsh
+      run: |
+        $version = Get-Content VERSION -Raw
+        $version = $version.Trim()
+        echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+        echo "Version: $version"
+    
+    - name: Run Go tests
+      run: go test ./... -v -race -coverprofile=coverage.txt -covermode=atomic
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        files: ./coverage.txt
+        flags: unittests
+        name: codecov-umbrella
+    
+    - name: Build Go DLL
+      shell: pwsh
+      run: .\scripts\build-dll.ps1 -Release -Version "${{ steps.version.outputs.VERSION }}"
+    
+    - name: Build C# WPF
+      shell: pwsh
+      run: .\scripts\build-wpf.ps1 -Configuration Release -Version "${{ steps.version.outputs.VERSION }}"
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-artifacts-${{ steps.version.outputs.VERSION }}
+        path: |
+          DeeMusic.Desktop/bin/Release/net8.0-windows/
+          deemusic-core.dll
+          deemusic-core.h
+        retention-days: 7

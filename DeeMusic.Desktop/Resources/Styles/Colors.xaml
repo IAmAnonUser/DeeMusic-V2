@@ -1,0 +1,34 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    
+    <!-- Dark Theme Colors -->
+    <Color x:Key="DarkBackground">#0a0a0a</Color>
+    <Color x:Key="DarkSurface">#1a1a1a</Color>
+    <Color x:Key="DarkPrimary">#6366f1</Color>
+    <Color x:Key="DarkSecondary">#8b5cf6</Color>
+    <Color x:Key="DarkSuccess">#10b981</Color>
+    <Color x:Key="DarkError">#ef4444</Color>
+    <Color x:Key="DarkText">#ffffff</Color>
+    <Color x:Key="DarkTextSecondary">#9ca3af</Color>
+    
+    <!-- Light Theme Colors -->
+    <Color x:Key="LightBackground">#ffffff</Color>
+    <Color x:Key="LightSurface">#f9fafb</Color>
+    <Color x:Key="LightPrimary">#4f46e5</Color>
+    <Color x:Key="LightSecondary">#7c3aed</Color>
+    <Color x:Key="LightSuccess">#059669</Color>
+    <Color x:Key="LightError">#dc2626</Color>
+    <Color x:Key="LightText">#111827</Color>
+    <Color x:Key="LightTextSecondary">#6b7280</Color>
+    
+    <!-- Brushes -->
+    <SolidColorBrush x:Key="BackgroundBrush" Color="{StaticResource DarkBackground}"/>
+    <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource DarkSurface}"/>
+    <SolidColorBrush x:Key="PrimaryBrush" Color="{StaticResource DarkPrimary}"/>
+    <SolidColorBrush x:Key="SecondaryBrush" Color="{StaticResource DarkSecondary}"/>
+    <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource DarkSuccess}"/>
+    <SolidColorBrush x:Key="ErrorBrush" Color="{StaticResource DarkError}"/>
+    <SolidColorBrush x:Key="TextBrush" Color="{StaticResource DarkText}"/>
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource DarkTextSecondary}"/>
+    
+</ResourceDictionary>
