@@ -143,6 +143,15 @@ namespace DeeMusic.Desktop.Services
         /// <returns>0 on success, negative error code on failure</returns>
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
         public static extern int DownloadPlaylist(string playlistID, string? quality);
+        
+        /// <summary>
+        /// Download a custom playlist (e.g., from Spotify import)
+        /// </summary>
+        /// <param name="playlistJSON">JSON containing playlist metadata and track IDs</param>
+        /// <param name="quality">Quality setting (e.g., "MP3_320", "FLAC")</param>
+        /// <returns>0 on success, negative error code on failure</returns>
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        public static extern int DownloadCustomPlaylist(string playlistJSON, string? quality);
 
         /// <summary>
         /// Convert Spotify URL to Deezer tracks

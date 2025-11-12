@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
@@ -32,6 +33,10 @@ type QueueItem struct {
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
 	CompletedAt     *time.Time `json:"completed_at,omitempty"`
+	AddedAt         time.Time  `json:"added_at"`                // When item was added to queue
+	PlaylistID      string     `json:"playlist_id,omitempty"`   // For playlists
+	IsCustom        bool       `json:"is_custom"`               // True for custom/imported playlists
+	CustomTracks    []string   `json:"custom_tracks,omitempty"` // Track IDs for custom playlists
 }
 
 // QueueStats represents queue statistics
@@ -45,7 +50,8 @@ type QueueStats struct {
 
 // QueueStore manages queue items in the database
 type QueueStore struct {
-	db *sql.DB
+	db      *sql.DB
+	batchMu sync.Mutex // Mutex to serialize batch operations
 }
 
 // NewQueueStore creates a new QueueStore
@@ -91,6 +97,74 @@ func (qs *QueueStore) Add(item *QueueItem) error {
 
 	if err != nil {
 		return fmt.Errorf("failed to add queue item: %w", err)
+	}
+
+	return nil
+}
+
+// AddBatch adds multiple items to the queue in a single transaction
+func (qs *QueueStore) AddBatch(items []*QueueItem) error {
+	if len(items) == 0 {
+		return nil
+	}
+
+	// Serialize batch operations to avoid database lock contention
+	qs.batchMu.Lock()
+	defer qs.batchMu.Unlock()
+
+	tx, err := qs.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	query := `
+		INSERT OR IGNORE INTO queue_items (
+			id, type, title, artist, album, status, progress,
+			download_url, output_path, error_message, retry_count,
+			metadata_json, parent_id, total_tracks, completed_tracks,
+			created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+
+	stmt, err := tx.Prepare(query)
+	if err != nil {
+		return fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	defer stmt.Close()
+
+	now := time.Now()
+	for _, item := range items {
+		item.CreatedAt = now
+		item.UpdatedAt = now
+
+		_, err := stmt.Exec(
+			item.ID,
+			item.Type,
+			item.Title,
+			item.Artist,
+			item.Album,
+			item.Status,
+			item.Progress,
+			item.DownloadURL,
+			item.OutputPath,
+			item.ErrorMessage,
+			item.RetryCount,
+			item.MetadataJSON,
+			item.ParentID,
+			item.TotalTracks,
+			item.CompletedTracks,
+			item.CreatedAt,
+			item.UpdatedAt,
+		)
+
+		if err != nil {
+			return fmt.Errorf("failed to add queue item: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return nil
@@ -687,6 +761,25 @@ func (qs *QueueStore) CountCompletedChildren(parentID string) int {
 	
 	var count int
 	err := qs.db.QueryRow(query, parentID).Scan(&count)
+	if err != nil {
+		return 0
+	}
+	
+	return count
+}
+
+// CountFinishedChildren counts how many child tracks are finished (completed or permanently failed)
+// A track is considered permanently failed if it has failed and reached the max retry count
+func (qs *QueueStore) CountFinishedChildren(parentID string, maxRetries int) int {
+	query := `
+		SELECT COUNT(*) 
+		FROM queue_items 
+		WHERE parent_id = ? 
+		AND (status = 'completed' OR (status = 'failed' AND retry_count >= ?))
+	`
+	
+	var count int
+	err := qs.db.QueryRow(query, parentID, maxRetries).Scan(&count)
 	if err != nil {
 		return 0
 	}

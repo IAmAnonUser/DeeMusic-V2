@@ -127,6 +127,7 @@ extern __declspec(dllexport) char* GetEditorialReleases(int limit);
 extern __declspec(dllexport) int DownloadTrack(char* trackID, char* quality);
 extern __declspec(dllexport) int DownloadAlbum(char* albumID, char* quality);
 extern __declspec(dllexport) int DownloadPlaylist(char* playlistID, char* quality);
+extern __declspec(dllexport) int DownloadCustomPlaylist(char* playlistJSON, char* quality);
 extern __declspec(dllexport) char* ConvertSpotifyURL(char* url);
 extern __declspec(dllexport) char* GetQueue(int offset, int limit, char* filter);
 extern __declspec(dllexport) char* GetQueueStats(void);

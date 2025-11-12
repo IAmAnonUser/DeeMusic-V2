@@ -35,6 +35,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -60,6 +61,7 @@ var (
 	initialized  bool
 	mu           sync.RWMutex
 	debugLog     *os.File
+	shutdownFlag bool // Flag to track if shutdown was intentional
 	
 	// Callbacks
 	progressCb     C.ProgressCallback
@@ -173,6 +175,26 @@ func (n *CallbackNotifier) notifyQueueUpdate() {
 
 //export InitializeApp
 func InitializeApp(configPath *C.char) C.int {
+	// Add panic recovery to prevent crashes
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "[PANIC] InitializeApp panicked: %v\n", r)
+			if debugLog != nil {
+				fmt.Fprintf(debugLog, "[%s] [PANIC] InitializeApp panicked: %v\n", time.Now().Format("2006-01-02 15:04:05"), r)
+				// Log stack trace
+				for i := 0; i < 20; i++ {
+					pc, file, line, ok := runtime.Caller(i)
+					if !ok {
+						break
+					}
+					fn := runtime.FuncForPC(pc)
+					fmt.Fprintf(debugLog, "  %s:%d %s\n", file, line, fn.Name())
+				}
+				debugLog.Sync()
+			}
+		}
+	}()
+	
 	mu.Lock()
 	defer mu.Unlock()
 	
@@ -191,14 +213,16 @@ func InitializeApp(configPath *C.char) C.int {
 	}
 	
 	if initialized {
-		logDebug("[INFO] Backend already initialized")
-		return 0 // Already initialized
+		logDebug("[WARN] Backend already initialized - returning success without reinitializing")
+		logDebug("[WARN] If you need to reinitialize, call ShutdownApp first")
+		return 0 // Already initialized - don't create a new context!
 	}
 	
 	logDebug("[INFO] Initializing DeeMusic backend...")
 	
-	// Create context
+	// Create context with no timeout - this should live for the entire application lifetime
 	ctx, cancel = context.WithCancel(context.Background())
+	logDebug("Created application context (should never be cancelled until shutdown)")
 	
 	// Load configuration
 	goConfigPath := C.GoString(configPath)
@@ -230,15 +254,18 @@ func InitializeApp(configPath *C.char) C.int {
 	}
 	
 	// Open database with optimizations
-	db, err = sql.Open("sqlite3", dbPath+"?_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL&cache=shared")
+	// Increased busy_timeout to 30 seconds to handle high concurrency
+	db, err = sql.Open("sqlite3", dbPath+"?_journal_mode=WAL&_busy_timeout=30000&_synchronous=NORMAL&cache=shared")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[ERROR] Failed to open database: %v\n", err)
 		return -4 // Database error
 	}
 	
 	// Set connection pool settings for better concurrency
-	db.SetMaxOpenConns(10)
-	db.SetMaxIdleConns(5)
+	// Increased to handle more concurrent workers
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(10)
+	db.SetConnMaxLifetime(time.Hour)
 	
 	// Test connection
 	if err := db.Ping(); err != nil {
@@ -281,16 +308,63 @@ func InitializeApp(configPath *C.char) C.int {
 	notifier := &CallbackNotifier{}
 	downloadMgr = download.NewManager(cfg, queueStore, deezerAPI, notifier)
 	
-	// Start download manager
+	// Start download manager with application-lifetime context
 	fmt.Fprintf(os.Stderr, "[INFO] Starting download manager...\n")
-	logDebug("Starting download manager with context...")
+	logDebug("Starting download manager with application-lifetime context...")
 	if err := downloadMgr.Start(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "[ERROR] Failed to start download manager: %v\n", err)
 		logDebug("Download manager start FAILED: %v", err)
 		return -6 // Failed to start download manager
 	}
-	logDebug("Download manager started successfully")
+	logDebug("Download manager started successfully with context that will live until shutdown")
 	fmt.Fprintf(os.Stderr, "[INFO] Download manager started successfully\n")
+	
+	// Add a goroutine to monitor context cancellation (for debugging)
+	// This goroutine will also attempt to recover from panics
+	fmt.Fprintf(os.Stderr, "[DEBUG] About to start context monitor goroutine\n")
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logDebug("[PANIC RECOVERY] Context monitor goroutine panicked: %v", r)
+				fmt.Fprintf(os.Stderr, "[PANIC RECOVERY] Context monitor goroutine panicked: %v\n", r)
+			}
+		}()
+		
+		fmt.Fprintf(os.Stderr, "[DEBUG] Context monitor goroutine RUNNING, waiting for ctx.Done()...\n")
+		<-ctx.Done()
+		
+		// Check if this was an intentional shutdown
+		mu.RLock()
+		wasIntentional := shutdownFlag
+		mu.RUnlock()
+		
+		if wasIntentional {
+			fmt.Fprintf(os.Stderr, "[INFO] Application context cancelled during intentional shutdown\n")
+			logDebug("[INFO] Application context cancelled during intentional shutdown")
+		} else {
+			fmt.Fprintf(os.Stderr, "[CRITICAL] ===== APPLICATION CONTEXT WAS CANCELLED UNEXPECTEDLY ===== Reason: %v\n", ctx.Err())
+			logDebug("[CRITICAL] UNEXPECTED CONTEXT CANCELLATION! Reason: %v", ctx.Err())
+			
+			// Log stack trace to see what cancelled the context
+			logDebug("[CRITICAL] Stack trace at unexpected context cancellation:")
+			for i := 0; i < 20; i++ {
+				pc, file, line, ok := runtime.Caller(i)
+				if !ok {
+					break
+				}
+				fn := runtime.FuncForPC(pc)
+				logDebug("  %s:%d %s", file, line, fn.Name())
+			}
+			
+			// Log to debug file
+			if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+				fmt.Fprintf(logFile, "[%s] [CRITICAL] UNEXPECTED CONTEXT CANCELLATION! Reason: %v\n", time.Now().Format("2006-01-02 15:04:05"), ctx.Err())
+				fmt.Fprintf(logFile, "[%s] [CRITICAL] This indicates a bug - context should only be cancelled during explicit shutdown!\n", time.Now().Format("2006-01-02 15:04:05"))
+				logFile.Close()
+			}
+		}
+	}()
+	fmt.Fprintf(os.Stderr, "[DEBUG] Context monitor goroutine started\n")
 	
 	initialized = true
 	fmt.Fprintf(os.Stderr, "[INFO] Backend initialized successfully\n")
@@ -303,30 +377,51 @@ func ShutdownApp() {
 	defer mu.Unlock()
 	
 	if !initialized {
+		logDebug("[WARN] Shutdown called but backend not initialized")
 		fmt.Fprintf(os.Stderr, "[WARN] Shutdown called but backend not initialized\n")
 		return
 	}
 	
+	// Set shutdown flag to indicate this is intentional
+	shutdownFlag = true
+	
+	logDebug("[INFO] ===== SHUTTING DOWN BACKEND =====")
+	logDebug("[INFO] Shutdown requested at %s", time.Now().Format("2006-01-02 15:04:05"))
 	fmt.Fprintf(os.Stderr, "[INFO] Shutting down backend...\n")
+	
+	// Log stack trace to see who's calling shutdown
+	logDebug("[INFO] Shutdown call stack:")
+	for i := 0; i < 10; i++ {
+		pc, file, line, ok := runtime.Caller(i)
+		if !ok {
+			break
+		}
+		fn := runtime.FuncForPC(pc)
+		logDebug("  %s:%d %s", file, line, fn.Name())
+	}
 	
 	// Stop download manager
 	if downloadMgr != nil {
+		logDebug("[INFO] Stopping download manager...")
 		fmt.Fprintf(os.Stderr, "[INFO] Stopping download manager...\n")
 		downloadMgr.Stop()
 	}
 	
 	// Close database
 	if db != nil {
+		logDebug("[INFO] Closing database...")
 		fmt.Fprintf(os.Stderr, "[INFO] Closing database...\n")
 		db.Close()
 	}
 	
-	// Cancel context
+	// Cancel context ONLY during intentional shutdown
 	if cancel != nil {
+		logDebug("[INFO] Cancelling application context (intentional shutdown)...")
 		cancel()
 	}
 	
 	initialized = false
+	logDebug("[INFO] Backend shutdown complete at %s", time.Now().Format("2006-01-02 15:04:05"))
 	fmt.Fprintf(os.Stderr, "[INFO] Backend shutdown complete\n")
 }
 
@@ -697,6 +792,31 @@ func DownloadPlaylist(playlistID *C.char, quality *C.char) C.int {
 	err := downloadMgr.DownloadPlaylist(ctx, goPlaylistID)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to download playlist: %v\n", err)
+		return -2
+	}
+	
+	return 0
+}
+
+//export DownloadCustomPlaylist
+func DownloadCustomPlaylist(playlistJSON *C.char, quality *C.char) C.int {
+	if !checkInitialized() {
+		return -1
+	}
+	
+	goPlaylistJSON := C.GoString(playlistJSON)
+	
+	// Update quality in config if provided
+	if quality != nil {
+		goQuality := C.GoString(quality)
+		if goQuality != "" {
+			cfg.Download.Quality = goQuality
+		}
+	}
+	
+	err := downloadMgr.DownloadCustomPlaylist(ctx, goPlaylistJSON)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to download custom playlist: %v\n", err)
 		return -2
 	}
 	

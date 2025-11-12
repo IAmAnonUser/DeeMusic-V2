@@ -2,6 +2,7 @@ package download
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -21,15 +22,18 @@ import (
 
 // Manager coordinates all download operations
 type Manager struct {
-	config      *config.Config
-	workerPool  *WorkerPool
-	queueStore  *store.QueueStore
-	deezerAPI   *api.DeezerClient
-	processor   *decryption.StreamingProcessor
-	notifier    Notifier
-	mu          sync.RWMutex
-	pausedJobs  map[string]bool
-	started     bool
+	config              *config.Config
+	workerPool          *WorkerPool
+	queueStore          *store.QueueStore
+	deezerAPI           *api.DeezerClient
+	processor           *decryption.StreamingProcessor
+	notifier            Notifier
+	mu                  sync.RWMutex
+	pausedJobs          map[string]bool
+	started             bool
+	albumMu             sync.Mutex            // Serialize album job processing to avoid database contention
+	artistImageMu       sync.Mutex            // Protect artist image downloads from race conditions
+	artistImageInFlight map[string]bool       // Track which artist images are currently being downloaded
 }
 
 // Notifier interface for progress notifications
@@ -50,13 +54,14 @@ func NewManager(
 	processor := decryption.NewStreamingProcessor(8192)
 
 	mgr := &Manager{
-		config:     cfg,
-		queueStore: queueStore,
-		deezerAPI:  deezerAPI,
-		processor:  processor,
-		notifier:   notifier,
-		pausedJobs: make(map[string]bool),
-		started:    false,
+		config:              cfg,
+		queueStore:          queueStore,
+		deezerAPI:           deezerAPI,
+		processor:           processor,
+		notifier:            notifier,
+		pausedJobs:          make(map[string]bool),
+		artistImageInFlight: make(map[string]bool),
+		started:             false,
 	}
 
 	// Create worker pool with job handler
@@ -135,14 +140,54 @@ func (m *Manager) downloadTrackJob(ctx context.Context, job *Job) error {
 		logFile.Close()
 	}
 
-	// Get queue item
+	// Get or create queue item
 	item, err := m.queueStore.GetByID(job.ID)
-	if err != nil {
-		if logFile, err2 := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err2 == nil {
-			fmt.Fprintf(logFile, "[%s] ERROR getting queue item: %v\n", time.Now().Format("2006-01-02 15:04:05"), err)
-			logFile.Close()
+	if err == nil && item != nil {
+		// Check if track is already completed - skip if so
+		if item.Status == "completed" {
+			if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+				fmt.Fprintf(logFile, "[%s] SKIPPING track %s - already completed (but updating parent progress)\n", time.Now().Format("2006-01-02 15:04:05"), job.ID)
+				logFile.Close()
+			}
+			
+			// Still update parent progress in case this is a retry/resubmit scenario
+			if item.ParentID != "" {
+				if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+					fmt.Fprintf(logFile, "[%s] Track %s already completed, updating parent %s progress\n", time.Now().Format("2006-01-02 15:04:05"), item.ID, item.ParentID)
+					logFile.Close()
+				}
+				m.updateParentProgress(item.ParentID)
+			}
+			
+			return nil
 		}
-		return fmt.Errorf("failed to get queue item: %w", err)
+	}
+	
+	if err != nil {
+		// Item doesn't exist - create it now (happens when submitted directly from album job)
+		// Extract parent album ID from job ID (format: track_ALBUMID_TRACKID)
+		parts := strings.Split(job.ID, "_")
+		parentID := ""
+		if len(parts) >= 2 {
+			parentID = "album_" + parts[1]
+		}
+		
+		item = &store.QueueItem{
+			ID:       job.ID,
+			Type:     "track",
+			Status:   "downloading",
+			Progress: 0,
+			ParentID: parentID,
+		}
+		
+		// Try to add to database (use INSERT OR IGNORE to handle race conditions)
+		if addErr := m.queueStore.Add(item); addErr != nil {
+			// If add fails, try to get it again (might have been created by another worker)
+			item, err = m.queueStore.GetByID(job.ID)
+			if err != nil {
+				return fmt.Errorf("failed to get or create queue item: %w", err)
+			}
+		}
 	}
 
 	// Check if paused
@@ -154,10 +199,6 @@ func (m *Manager) downloadTrackJob(ctx context.Context, job *Job) error {
 	item.Status = "downloading"
 	item.Progress = 0
 	if err := m.queueStore.Update(item); err != nil {
-		if logFile, err2 := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err2 == nil {
-			fmt.Fprintf(logFile, "[%s] ERROR updating status to downloading: %v\n", time.Now().Format("2006-01-02 15:04:05"), err)
-			logFile.Close()
-		}
 		return fmt.Errorf("failed to update queue item: %w", err)
 	}
 
@@ -174,42 +215,109 @@ func (m *Manager) downloadTrackJob(ctx context.Context, job *Job) error {
 	// Get track details
 	track, err := m.deezerAPI.GetTrack(ctx, job.TrackID)
 	if err != nil {
-		if logFile, err2 := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err2 == nil {
-			fmt.Fprintf(logFile, "[%s] ERROR getting track details: %v\n", time.Now().Format("2006-01-02 15:04:05"), err)
-			logFile.Close()
-		}
 		return fmt.Errorf("failed to get track details: %w", err)
 	}
 
-	if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
-		fmt.Fprintf(logFile, "[%s] Got track details: %s\n", time.Now().Format("2006-01-02 15:04:05"), track.Title)
-		logFile.Close()
+	// Update queue item with track metadata (if it was created without metadata)
+	if item.Title == "" {
+		item.Title = track.Title
+		item.Artist = track.Artist.Name
+		item.Album = track.Album.Title
+		m.queueStore.Update(item)
 	}
 
 	// Check if this track is part of an album or playlist download (has ParentID)
 	if item.ParentID != "" {
+		if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+			fmt.Fprintf(logFile, "[%s] Track has ParentID: %s\n", time.Now().Format("2006-01-02 15:04:05"), item.ParentID)
+			logFile.Close()
+		}
+		
 		// Get parent item to determine if it's an album or playlist
 		parentItem, err := m.queueStore.GetByID(item.ParentID)
 		if err == nil && parentItem != nil {
+			if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+				fmt.Fprintf(logFile, "[%s] Parent item found: Type=%s, IsCustom=%v, Title=%s\n", 
+					time.Now().Format("2006-01-02 15:04:05"), parentItem.Type, parentItem.IsCustom, parentItem.Title)
+				logFile.Close()
+			}
+			
 			if parentItem.Type == "playlist" {
 				// This is part of a playlist download
-				// Get playlist details to attach to track
 				playlistID := strings.TrimPrefix(item.ParentID, "playlist_")
-				playlist, err := m.deezerAPI.GetPlaylist(ctx, playlistID)
-				if err == nil {
-					track.Playlist = playlist
-					// Find position in playlist
-					for i, plTrack := range playlist.Tracks.Data {
-						if plTrack.ID.String() == track.ID.String() {
+				
+				// Check if this is a custom playlist by loading metadata
+				var isCustomPlaylist bool
+				var customTracks []string
+				var metadata map[string]interface{}
+				
+				if parentItem.MetadataJSON != "" {
+					if err := parentItem.GetMetadata(&metadata); err == nil {
+						if isCustom, ok := metadata["is_custom"].(bool); ok && isCustom {
+							isCustomPlaylist = true
+							if customTracksInterface, ok := metadata["custom_tracks"].([]interface{}); ok {
+								for _, t := range customTracksInterface {
+									if trackID, ok := t.(string); ok {
+										customTracks = append(customTracks, trackID)
+									}
+								}
+							}
+						}
+					}
+				}
+				
+				// Check if this is a custom playlist (e.g., from Spotify)
+				if isCustomPlaylist {
+					// Create a fake playlist object for custom playlists
+					// Get picture URL from metadata if available
+					var pictureURL string
+					if metadata != nil {
+						if pic, ok := metadata["picture_url"].(string); ok {
+							pictureURL = pic
+						}
+					}
+					
+					track.Playlist = &api.Playlist{
+						ID:    api.FlexibleID(playlistID),
+						Title: parentItem.Title,
+						Creator: &api.User{
+							Name: parentItem.Artist,
+						},
+						Picture:   pictureURL,
+						PictureXL: pictureURL,
+					}
+					
+					// Find position in custom track list
+					for i, trackID := range customTracks {
+						if trackID == track.ID.String() {
 							track.PlaylistPosition = i + 1
 							break
 						}
 					}
 					
 					if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
-						fmt.Fprintf(logFile, "[%s] Track is part of playlist download. PlaylistID=%s, Position=%d\n", 
-							time.Now().Format("2006-01-02 15:04:05"), playlistID, track.PlaylistPosition)
+						fmt.Fprintf(logFile, "[%s] Track is part of CUSTOM playlist download. PlaylistID=%s, Title=%s, Position=%d\n", 
+							time.Now().Format("2006-01-02 15:04:05"), playlistID, parentItem.Title, track.PlaylistPosition)
 						logFile.Close()
+					}
+				} else {
+					// Regular Deezer playlist - fetch from API
+					playlist, err := m.deezerAPI.GetPlaylist(ctx, playlistID)
+					if err == nil {
+						track.Playlist = playlist
+						// Find position in playlist
+						for i, plTrack := range playlist.Tracks.Data {
+							if plTrack.ID.String() == track.ID.String() {
+								track.PlaylistPosition = i + 1
+								break
+							}
+						}
+						
+						if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+							fmt.Fprintf(logFile, "[%s] Track is part of playlist download. PlaylistID=%s, Position=%d\n", 
+								time.Now().Format("2006-01-02 15:04:05"), playlistID, track.PlaylistPosition)
+							logFile.Close()
+						}
 					}
 				}
 			} else if parentItem.Type == "album" {
@@ -303,28 +411,41 @@ func (m *Manager) downloadTrackJob(ctx context.Context, job *Job) error {
 	}
 
 	// Determine album artist for folder structure
-	// Default to track artist
-	track.AlbumArtist = track.Artist.Name
+	// ALWAYS prefer album-level artist over track artist to keep all tracks in one folder
+	// This prevents splitting albums when individual tracks have different artists
+	track.AlbumArtist = track.Artist.Name // Default fallback
 	
 	// For playlist downloads, use "Various Artists"
 	if track.Playlist != nil {
 		track.AlbumArtist = "Various Artists"
-	} else if track.Album.RecordType != "single" && track.Album.RecordType != "ep" &&
-	          (track.Album.RecordType == "compilation" || 
-	           strings.Contains(strings.ToLower(track.Album.Title), "soundtrack") ||
-	           strings.Contains(strings.ToLower(track.Album.Title), "original score") ||
-	           strings.Contains(strings.ToLower(track.Album.Title), "original motion picture")) {
-		// For compilations and soundtracks, use "Various Artists"
-		track.AlbumArtist = "Various Artists"
-		
-		if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
-			fmt.Fprintf(logFile, "[%s] Compilation/Soundtrack detected for folder structure: Album='%s', RecordType='%s', using AlbumArtist=Various Artists\n", 
-				time.Now().Format("2006-01-02 15:04:05"), track.Album.Title, track.Album.RecordType)
-			logFile.Close()
+	} else if track.Album != nil {
+		// First, check if we have a cached album artist from the album download job
+		// This ensures ALL tracks in an album use the same artist folder
+		albumID := fmt.Sprintf("%v", track.Album.ID)
+		if cachedArtist, ok := getCachedAlbumArtist(albumID); ok {
+			track.AlbumArtist = cachedArtist
+			if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+				fmt.Fprintf(logFile, "[%s] Using cached album artist for album %s: %s\n", 
+					time.Now().Format("2006-01-02 15:04:05"), albumID, cachedArtist)
+				logFile.Close()
+			}
+		} else if track.Album.RecordType != "single" && track.Album.RecordType != "ep" &&
+		   (track.Album.RecordType == "compilation" || 
+		    strings.Contains(strings.ToLower(track.Album.Title), "soundtrack") ||
+		    strings.Contains(strings.ToLower(track.Album.Title), "original score") ||
+		    strings.Contains(strings.ToLower(track.Album.Title), "original motion picture")) {
+			// For compilations and soundtracks, use "Various Artists"
+			track.AlbumArtist = "Various Artists"
+			
+			if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+				fmt.Fprintf(logFile, "[%s] Compilation/Soundtrack detected for folder structure: Album='%s', RecordType='%s', using AlbumArtist=Various Artists\n", 
+					time.Now().Format("2006-01-02 15:04:05"), track.Album.Title, track.Album.RecordType)
+				logFile.Close()
+			}
+		} else if track.Album.Artist != nil && track.Album.Artist.Name != "" {
+			// Use album-level artist from track's album object
+			track.AlbumArtist = track.Album.Artist.Name
 		}
-	} else if track.Album.Artist != nil && track.Album.Artist.Name != "" {
-		// Use album artist if available
-		track.AlbumArtist = track.Album.Artist.Name
 	}
 
 	// Build output path
@@ -403,14 +524,20 @@ func (m *Manager) downloadTrackJob(ctx context.Context, job *Job) error {
 	}
 
 	// Progress callback
+	lastProgress := -1
 	progressCallback := func(bytesProcessed, totalBytes int64) {
 		if totalBytes > 0 {
 			progress := int((bytesProcessed * 100) / totalBytes)
-			item.Progress = progress
-			m.queueStore.Update(item)
+			
+			// Only update if progress has changed (avoid spamming database)
+			if progress != lastProgress {
+				lastProgress = progress
+				item.Progress = progress
+				m.queueStore.Update(item)
 
-			if m.notifier != nil {
-				m.notifier.NotifyProgress(job.ID, progress, bytesProcessed, totalBytes)
+				if m.notifier != nil {
+					m.notifier.NotifyProgress(job.ID, progress, bytesProcessed, totalBytes)
+				}
 			}
 		}
 	}
@@ -459,21 +586,72 @@ func (m *Manager) downloadTrackJob(ctx context.Context, job *Job) error {
 			}
 			
 			// Download artist image (to artist folder) - but NOT for compilations/soundtracks
-			// Compilations use "Various Artists" and shouldn't have individual artist images
+			// Now with extensive logging to identify crash location
 			if track.AlbumArtist != "Various Artists" {
-				artistDir := filepath.Dir(trackDir) // Go up one level from album to artist
-				if err := m.downloadArtistImage(ctx, track.Artist, artistDir); err != nil {
-					// Log error to debug file but don't fail the download
-					if logFile, err2 := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err2 == nil {
-						fmt.Fprintf(logFile, "[%s] Failed to download artist image: %v\n", time.Now().Format("2006-01-02 15:04:05"), err)
+				// trackDir is the directory containing the track file
+				// For multi-disc albums: Artist\Album\CD X\ -> go up 2 levels to Artist
+				// For single-disc albums: Artist\Album\ -> go up 1 level to Artist
+				var artistDir string
+				if track.IsMultiDiscAlbum {
+					// Multi-disc: trackDir is "Artist\Album\CD X", go up 2 levels
+					albumDir := filepath.Dir(trackDir)  // Up to Album folder
+					artistDir = filepath.Dir(albumDir)  // Up to Artist folder
+				} else {
+					// Single-disc: trackDir is "Artist\Album", go up 1 level
+					artistDir = filepath.Dir(trackDir)  // Up to Artist folder
+				}
+				
+				if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+					fmt.Fprintf(logFile, "[%s] [ARTIST_IMG] Track download complete, attempting artist image for: %s\n", time.Now().Format("2006-01-02 15:04:05"), track.AlbumArtist)
+					logFile.Close()
+				}
+				
+				// Get artist ID - prefer album artist, fallback to track artist
+				var artistID api.FlexibleID
+				var artistName string
+				var hasArtist bool
+				
+				if track.Album != nil && track.Album.Artist != nil {
+					artistID = track.Album.Artist.ID
+					artistName = track.AlbumArtist
+					hasArtist = true
+					if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+						fmt.Fprintf(logFile, "[%s] [ARTIST_IMG] Using album artist ID: %v\n", time.Now().Format("2006-01-02 15:04:05"), artistID)
+						logFile.Close()
+					}
+				} else if track.Artist != nil {
+					artistID = track.Artist.ID
+					artistName = track.AlbumArtist
+					hasArtist = true
+					if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+						fmt.Fprintf(logFile, "[%s] [ARTIST_IMG] Using track artist ID: %v\n", time.Now().Format("2006-01-02 15:04:05"), artistID)
+						logFile.Close()
+					}
+				} else {
+					if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+						fmt.Fprintf(logFile, "[%s] [ARTIST_IMG] ERROR: No artist ID available for %s\n", time.Now().Format("2006-01-02 15:04:05"), track.AlbumArtist)
 						logFile.Close()
 					}
 				}
-			} else {
-				if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
-					fmt.Fprintf(logFile, "[%s] Skipping artist image for compilation/soundtrack (AlbumArtist=Various Artists)\n", 
-						time.Now().Format("2006-01-02 15:04:05"))
-					logFile.Close()
+				
+				if hasArtist {
+					albumArtist := &api.Artist{
+						ID:   artistID,
+						Name: artistName,
+					}
+					
+					if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+						fmt.Fprintf(logFile, "[%s] [ARTIST_IMG] Calling downloadArtistImage for %s\n", time.Now().Format("2006-01-02 15:04:05"), artistName)
+						logFile.Close()
+					}
+					
+					if err := m.downloadArtistImage(ctx, albumArtist, artistDir); err != nil {
+						// Log error but don't fail the download
+						if logFile, err2 := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err2 == nil {
+							fmt.Fprintf(logFile, "[%s] [ARTIST_IMG] Failed to download artist image for %s: %v\n", time.Now().Format("2006-01-02 15:04:05"), artistName, err)
+							logFile.Close()
+						}
+					}
 				}
 			}
 		}
@@ -539,8 +717,13 @@ func (m *Manager) downloadTrackJob(ctx context.Context, job *Job) error {
 		return fmt.Errorf("failed to update queue item: %w", err)
 	}
 
-	// If this track belongs to an album, update the album's completed count
+	// If this track belongs to an album/playlist, update the parent's completed count
 	if item.ParentID != "" {
+		// Log before updating parent progress
+		if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+			fmt.Fprintf(logFile, "[%s] Track %s completed, updating parent %s progress\n", time.Now().Format("2006-01-02 15:04:05"), item.ID, item.ParentID)
+			logFile.Close()
+		}
 		m.updateParentProgress(item.ParentID)
 	}
 
@@ -568,6 +751,9 @@ func (m *Manager) downloadTrackJob(ctx context.Context, job *Job) error {
 
 // downloadAlbumJob downloads all tracks in an album
 func (m *Manager) downloadAlbumJob(ctx context.Context, job *Job) error {
+	// No mutex needed anymore - we eliminated database contention by removing batch inserts
+	// Album jobs now just submit track jobs directly without database writes
+	
 	// Log to temp file
 	if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
 		fmt.Fprintf(logFile, "[%s] downloadAlbumJob started for album %s\n", time.Now().Format("2006-01-02 15:04:05"), job.AlbumID)
@@ -593,6 +779,59 @@ func (m *Manager) downloadAlbumJob(ctx context.Context, job *Job) error {
 			logFile.Close()
 		}
 		return fmt.Errorf("failed to get album details: %w", err)
+	}
+	
+	// Determine the album artist to cache
+	// This ensures all tracks use the same artist folder
+	albumArtistName := ""
+	
+	// Check if this is a compilation or soundtrack
+	isCompilation := false
+	
+	// Method 1: Check RecordType
+	if album.RecordType == "compilation" {
+		isCompilation = true
+		if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+			fmt.Fprintf(logFile, "[%s] Album %s is a compilation (RecordType=%s)\n", time.Now().Format("2006-01-02 15:04:05"), job.AlbumID, album.RecordType)
+			logFile.Close()
+		}
+	}
+	
+	// Method 2: If RecordType is blank/empty, check for soundtrack keywords AND multiple artists
+	if !isCompilation && (album.RecordType == "" || album.RecordType == "album") {
+		albumTitleLower := strings.ToLower(album.Title)
+		hasSoundtrackKeyword := strings.Contains(albumTitleLower, "soundtrack") ||
+		                        strings.Contains(albumTitleLower, "original score") ||
+		                        strings.Contains(albumTitleLower, "original motion picture")
+		
+		// Check if album has multiple artists (contributors)
+		hasMultipleArtists := len(album.Contributors) > 1
+		
+		if hasSoundtrackKeyword && hasMultipleArtists {
+			isCompilation = true
+			if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+				fmt.Fprintf(logFile, "[%s] Album %s detected as soundtrack: Title='%s', Contributors=%d\n", 
+					time.Now().Format("2006-01-02 15:04:05"), job.AlbumID, album.Title, len(album.Contributors))
+				logFile.Close()
+			}
+		}
+	}
+	
+	// Set album artist based on compilation status
+	if isCompilation {
+		albumArtistName = "Various Artists"
+	} else if album.Artist != nil && album.Artist.Name != "" {
+		albumArtistName = album.Artist.Name
+	}
+	
+	// Cache the album artist
+	if albumArtistName != "" {
+		cacheAlbumArtist(job.AlbumID, albumArtistName)
+		if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+			fmt.Fprintf(logFile, "[%s] Cached album artist for album %s: %s (isCompilation=%v)\n", 
+				time.Now().Format("2006-01-02 15:04:05"), job.AlbumID, albumArtistName, isCompilation)
+			logFile.Close()
+		}
 	}
 
 	totalTracks := len(album.Tracks.Data)
@@ -755,7 +994,17 @@ func (m *Manager) downloadAlbumJob(ctx context.Context, job *Job) error {
 	}
 
 	// Create jobs for each track
-	for i, track := range album.Tracks.Data {
+	if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		fmt.Fprintf(logFile, "[%s] Starting track submission loop for %d tracks\n", time.Now().Format("2006-01-02 15:04:05"), len(album.Tracks.Data))
+		logFile.Close()
+	}
+	
+	// Submit track jobs directly without database insert
+	// The database insert will happen when the track actually starts downloading
+	// This eliminates database contention from album job processing
+	// Submit all tracks asynchronously without waiting
+	// This prevents blocking when the worker pool is full
+	for _, track := range album.Tracks.Data {
 		// Check if cancelled
 		select {
 		case <-ctx.Done():
@@ -764,103 +1013,46 @@ func (m *Manager) downloadAlbumJob(ctx context.Context, job *Job) error {
 		}
 
 		trackID := fmt.Sprintf("track_%s_%s", job.AlbumID, track.ID)
-
-		// Try to get existing track
-		existingTrack, err := m.queueStore.GetByID(trackID)
-		if err == nil && existingTrack != nil {
-			// Track exists - check if it needs to be reprocessed
-			if existingTrack.Status == "completed" {
-				// Skip completed tracks
-				if logFile, err2 := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err2 == nil {
-					fmt.Fprintf(logFile, "[%s] Track %d already completed, skipping\n", time.Now().Format("2006-01-02 15:04:05"), i)
-					logFile.Close()
-				}
-				continue
-			}
-			
-			// Track exists but not completed - reset to pending and submit job
-			if logFile, err2 := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err2 == nil {
-				fmt.Fprintf(logFile, "[%s] Track %d exists with status %s, resetting to pending and resubmitting\n", time.Now().Format("2006-01-02 15:04:05"), i, existingTrack.Status)
-				logFile.Close()
-			}
-			
-			// Reset status to pending so it gets picked up by processQueue
-			existingTrack.Status = "pending"
-			existingTrack.Progress = 0
-			existingTrack.ErrorMessage = ""
-			updateErr := m.queueStore.Update(existingTrack)
-			
-			if logFile, err2 := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err2 == nil {
-				if updateErr != nil {
-					fmt.Fprintf(logFile, "[%s] ERROR updating track %d status: %v\n", time.Now().Format("2006-01-02 15:04:05"), i, updateErr)
-				} else {
-					fmt.Fprintf(logFile, "[%s] Track %d status updated to pending in DB\n", time.Now().Format("2006-01-02 15:04:05"), i)
-				}
-				logFile.Close()
-			}
-			
-			trackJob := &Job{
-				ID:      trackID,
-				Type:    JobTypeTrack,
-				TrackID: track.ID.String(),
-			}
-
-			if err := m.workerPool.Submit(trackJob); err != nil {
-				if logFile, err2 := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err2 == nil {
-					fmt.Fprintf(logFile, "[%s] ERROR submitting existing track job %d: %v\n", time.Now().Format("2006-01-02 15:04:05"), i, err)
-					logFile.Close()
-				}
-				// Don't return error, just continue with next track
-				continue
-			}
-			
+		
+		// Skip if already active in worker pool
+		if m.workerPool.IsJobActive(trackID) {
 			if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
-				fmt.Fprintf(logFile, "[%s] Existing track %d reset and resubmitted: %s\n", time.Now().Format("2006-01-02 15:04:05"), i, trackID)
+				fmt.Fprintf(logFile, "[%s] Track %s already active in worker pool, skipping\n", time.Now().Format("2006-01-02 15:04:05"), trackID)
 				logFile.Close()
 			}
 			continue
 		}
-
-		// Track doesn't exist - create it
-		trackItem := &store.QueueItem{
-			ID:       trackID,
-			Type:     "track",
-			Title:    track.Title,
-			Artist:   track.Artist.Name,
-			Album:    album.Title,
-			Status:   "pending",
-			ParentID: job.ID, // Link track to parent album
-		}
-
-		if err := m.queueStore.Add(trackItem); err != nil {
-			// Failed to add, log and continue
-			if logFile, err2 := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err2 == nil {
-				fmt.Fprintf(logFile, "[%s] Track %d error adding: %v\n", time.Now().Format("2006-01-02 15:04:05"), i, err)
-				logFile.Close()
-			}
-			continue
-		}
-
-		// Submit track job
+		
 		trackJob := &Job{
-			ID:      trackItem.ID,
+			ID:      trackID,
 			Type:    JobTypeTrack,
 			TrackID: track.ID.String(),
 		}
 
-		if err := m.workerPool.Submit(trackJob); err != nil {
-			if logFile, err2 := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err2 == nil {
-				fmt.Fprintf(logFile, "[%s] ERROR submitting track job %d: %v\n", time.Now().Format("2006-01-02 15:04:05"), i, err)
-				logFile.Close()
+		// Submit asynchronously in a goroutine to avoid blocking
+		// The worker pool will handle the job when a worker becomes available
+		go func(job *Job, tid string) {
+			// Try to submit with a timeout
+			submitCtx, submitCancel := context.WithTimeout(ctx, 10*time.Second)
+			defer submitCancel()
+			
+			select {
+			case <-submitCtx.Done():
+				// Timeout or context cancelled
+				if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+					fmt.Fprintf(logFile, "[%s] Timeout submitting track %s, will retry later\n", time.Now().Format("2006-01-02 15:04:05"), tid)
+					logFile.Close()
+				}
+			default:
+				// Try to submit
+				if err := m.workerPool.Submit(job); err != nil {
+					if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+						fmt.Fprintf(logFile, "[%s] Failed to submit track %s: %v\n", time.Now().Format("2006-01-02 15:04:05"), tid, err)
+						logFile.Close()
+					}
+				}
 			}
-			// Don't return error, just continue with next track
-			continue
-		}
-		
-		if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
-			fmt.Fprintf(logFile, "[%s] New track %d submitted: %s\n", time.Now().Format("2006-01-02 15:04:05"), i, trackItem.ID)
-			logFile.Close()
-		}
+		}(trackJob, trackID)
 	}
 
 	// Don't mark album as completed yet - it will be marked completed when all tracks finish
@@ -882,7 +1074,7 @@ func (m *Manager) downloadAlbumJob(ctx context.Context, job *Job) error {
 func (m *Manager) downloadPlaylistJob(ctx context.Context, job *Job) error {
 	// Log to temp file
 	if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
-		fmt.Fprintf(logFile, "[%s] downloadPlaylistJob started for playlist %s\n", time.Now().Format("2006-01-02 15:04:05"), job.PlaylistID)
+		fmt.Fprintf(logFile, "[%s] downloadPlaylistJob started for playlist %s (custom: %v)\n", time.Now().Format("2006-01-02 15:04:05"), job.PlaylistID, job.IsCustom)
 		logFile.Close()
 	}
 
@@ -897,17 +1089,66 @@ func (m *Manager) downloadPlaylistJob(ctx context.Context, job *Job) error {
 		}
 	}
 
-	// Get playlist details
-	playlist, err := m.deezerAPI.GetPlaylist(ctx, job.PlaylistID)
-	if err != nil {
-		if logFile, err2 := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err2 == nil {
-			fmt.Fprintf(logFile, "[%s] ERROR getting playlist details: %v\n", time.Now().Format("2006-01-02 15:04:05"), err)
+	var trackIDs []string
+	
+	// Get playlist item to check if it's custom
+	playlistItem, err2 := m.queueStore.GetByID(job.ID)
+	if err2 != nil {
+		return fmt.Errorf("failed to get playlist item: %w", err2)
+	}
+	
+	// Try to load custom playlist metadata
+	var metadata map[string]interface{}
+	if playlistItem.MetadataJSON != "" {
+		if err := playlistItem.GetMetadata(&metadata); err == nil {
+			if isCustom, ok := metadata["is_custom"].(bool); ok && isCustom {
+				if customTracks, ok := metadata["custom_tracks"].([]interface{}); ok {
+					if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+						fmt.Fprintf(logFile, "[%s] Processing custom playlist with %d tracks from metadata\n", time.Now().Format("2006-01-02 15:04:05"), len(customTracks))
+						logFile.Close()
+					}
+					
+					// Convert []interface{} to []string
+					for _, t := range customTracks {
+						if trackID, ok := t.(string); ok {
+							trackIDs = append(trackIDs, trackID)
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	// If we got track IDs from metadata, use them
+	if len(trackIDs) > 0 {
+		if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+			fmt.Fprintf(logFile, "[%s] Using %d tracks from custom playlist metadata\n", time.Now().Format("2006-01-02 15:04:05"), len(trackIDs))
 			logFile.Close()
 		}
-		return fmt.Errorf("failed to get playlist details: %w", err)
+	} else if job.IsCustom && job.QueueItem != nil {
+		// Fallback to job data
+		if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+			fmt.Fprintf(logFile, "[%s] Processing custom playlist with %d tracks from job\n", time.Now().Format("2006-01-02 15:04:05"), len(job.QueueItem.CustomTracks))
+			logFile.Close()
+		}
+		trackIDs = job.QueueItem.CustomTracks
+	} else {
+		// Get playlist details from Deezer
+		playlist, err := m.deezerAPI.GetPlaylist(ctx, job.PlaylistID)
+		if err != nil {
+			if logFile, err2 := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err2 == nil {
+				fmt.Fprintf(logFile, "[%s] ERROR getting playlist details: %v\n", time.Now().Format("2006-01-02 15:04:05"), err)
+				logFile.Close()
+			}
+			return fmt.Errorf("failed to get playlist details: %w", err)
+		}
+		
+		for _, track := range playlist.Tracks.Data {
+			trackIDs = append(trackIDs, track.ID.String())
+		}
 	}
 
-	totalTracks := len(playlist.Tracks.Data)
+	totalTracks := len(trackIDs)
 	if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
 		fmt.Fprintf(logFile, "[%s] Playlist has %d tracks\n", time.Now().Format("2006-01-02 15:04:05"), totalTracks)
 		logFile.Close()
@@ -927,7 +1168,7 @@ func (m *Manager) downloadPlaylistJob(ctx context.Context, job *Job) error {
 	}
 
 	// Create jobs for each track
-	for i, track := range playlist.Tracks.Data {
+	for i, trackIDStr := range trackIDs {
 		// Check if cancelled
 		select {
 		case <-ctx.Done():
@@ -935,10 +1176,10 @@ func (m *Manager) downloadPlaylistJob(ctx context.Context, job *Job) error {
 		default:
 		}
 
-		trackID := fmt.Sprintf("track_%s_%s", job.PlaylistID, track.ID)
+		queueTrackID := fmt.Sprintf("track_%s_%s", job.PlaylistID, trackIDStr)
 
 		// Try to get existing track
-		existingTrack, err := m.queueStore.GetByID(trackID)
+		existingTrack, err := m.queueStore.GetByID(queueTrackID)
 		if err == nil && existingTrack != nil {
 			// Track exists - check if it needs to be reprocessed
 			if existingTrack.Status == "completed" {
@@ -956,9 +1197,9 @@ func (m *Manager) downloadPlaylistJob(ctx context.Context, job *Job) error {
 			m.queueStore.Update(existingTrack)
 			
 			trackJob := &Job{
-				ID:      trackID,
+				ID:      queueTrackID,
 				Type:    JobTypeTrack,
-				TrackID: track.ID.String(),
+				TrackID: trackIDStr,
 			}
 
 			if err := m.workerPool.Submit(trackJob); err != nil {
@@ -971,9 +1212,19 @@ func (m *Manager) downloadPlaylistJob(ctx context.Context, job *Job) error {
 			continue
 		}
 
+		// Get track details to create queue item
+		track, err := m.deezerAPI.GetTrack(ctx, trackIDStr)
+		if err != nil {
+			if logFile, err2 := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err2 == nil {
+				fmt.Fprintf(logFile, "[%s] ERROR getting track %s details: %v\n", time.Now().Format("2006-01-02 15:04:05"), trackIDStr, err)
+				logFile.Close()
+			}
+			continue
+		}
+
 		// Create queue item for track
 		trackItem := &store.QueueItem{
-			ID:       trackID,
+			ID:       queueTrackID,
 			Type:     "track",
 			Title:    track.Title,
 			Artist:   track.Artist.Name,
@@ -995,7 +1246,7 @@ func (m *Manager) downloadPlaylistJob(ctx context.Context, job *Job) error {
 		trackJob := &Job{
 			ID:      trackItem.ID,
 			Type:    JobTypeTrack,
-			TrackID: track.ID.String(),
+			TrackID: trackIDStr,
 		}
 
 		if err := m.workerPool.Submit(trackJob); err != nil {
@@ -1301,6 +1552,84 @@ func (m *Manager) DownloadAlbum(ctx context.Context, albumID string) error {
 	return nil
 }
 
+// DownloadCustomPlaylist downloads a custom playlist (e.g., from Spotify import)
+func (m *Manager) DownloadCustomPlaylist(ctx context.Context, playlistJSON string) error {
+	fmt.Printf("[Manager] DownloadCustomPlaylist called\n")
+	
+	// Parse the custom playlist JSON
+	var customPlaylist struct {
+		ID          string   `json:"id"`
+		Title       string   `json:"title"`
+		Description string   `json:"description"`
+		Creator     string   `json:"creator"`
+		TrackIDs    []string `json:"track_ids"`
+		PictureURL  string   `json:"picture_url"`
+	}
+	
+	if err := json.Unmarshal([]byte(playlistJSON), &customPlaylist); err != nil {
+		return fmt.Errorf("failed to parse custom playlist JSON: %w", err)
+	}
+	
+	fmt.Printf("[Manager] Custom playlist: %s (%d tracks)\n", customPlaylist.Title, len(customPlaylist.TrackIDs))
+	
+	itemID := fmt.Sprintf("playlist_%s", customPlaylist.ID)
+	
+	// Check if item already exists
+	existingItem, err := m.queueStore.GetByID(itemID)
+	if err == nil && existingItem != nil {
+		fmt.Printf("[Manager] Custom playlist already in queue with status: %s\n", existingItem.Status)
+		// If it's pending or downloading, return error to notify user
+		if existingItem.Status == "pending" || existingItem.Status == "downloading" {
+			return fmt.Errorf("playlist already in queue")
+		}
+		// If it's failed or completed, reset it to pending
+	}
+	
+	// Create queue item
+	queueItem := &store.QueueItem{
+		ID:          itemID,
+		Type:        "playlist",
+		Title:       customPlaylist.Title,
+		Artist:      customPlaylist.Creator,
+		Status:      "pending",
+		TotalTracks: len(customPlaylist.TrackIDs),
+	}
+	
+	// Store custom playlist data in metadata
+	metadata := map[string]interface{}{
+		"is_custom":     true,
+		"custom_tracks": customPlaylist.TrackIDs,
+		"playlist_id":   customPlaylist.ID,
+		"description":   customPlaylist.Description,
+		"picture_url":   customPlaylist.PictureURL,
+	}
+	if err := queueItem.SetMetadata(metadata); err != nil {
+		return fmt.Errorf("failed to set metadata: %w", err)
+	}
+	
+	// Save to database
+	if err := m.queueStore.Add(queueItem); err != nil {
+		return fmt.Errorf("failed to add custom playlist to queue: %w", err)
+	}
+	
+	// Create job
+	job := &Job{
+		ID:         itemID,
+		Type:       JobTypePlaylist,
+		PlaylistID: customPlaylist.ID,
+		QueueItem:  queueItem,
+		IsCustom:   true,
+	}
+	
+	// Submit job
+	if err := m.workerPool.Submit(job); err != nil {
+		return fmt.Errorf("failed to submit custom playlist job: %w", err)
+	}
+	
+	fmt.Printf("[Manager] Custom playlist job submitted: %s\n", customPlaylist.Title)
+	return nil
+}
+
 // DownloadPlaylist adds a playlist to the download queue
 func (m *Manager) DownloadPlaylist(ctx context.Context, playlistID string) error {
 	fmt.Printf("[Manager] DownloadPlaylist called with playlistID: '%s'\n", playlistID)
@@ -1469,7 +1798,7 @@ func (m *Manager) buildOutputPath(track *api.Track) string {
 	
 	// Check if this is a playlist download
 	if track.Playlist != nil && m.config.Download.CreatePlaylistFolder {
-		// Playlist download - use playlist folder structure
+		// Playlist download - use "Various Artists/Playlist" folder structure
 		playlistName := sanitizeFilename(track.Playlist.Title)
 		
 		// Use playlist folder template if configured
@@ -1480,7 +1809,9 @@ func (m *Manager) buildOutputPath(track *api.Track) string {
 		
 		// Replace placeholders
 		playlistFolder := strings.ReplaceAll(playlistFolderTemplate, "{playlist}", playlistName)
-		folderPath = playlistFolder
+		
+		// Always use "Various Artists" as the album artist for playlists
+		folderPath = filepath.Join("Various Artists", playlistFolder)
 		
 		// Use playlist track template for filename
 		playlistTrackTemplate := m.config.Download.PlaylistTrackTemplate
@@ -1569,6 +1900,25 @@ type DiscInfo struct {
 // Cache for multi-disc album detection to avoid repeated API calls
 var multiDiscCache = make(map[string]*DiscInfo)
 var multiDiscCacheMu sync.RWMutex
+
+// Cache for album artists to ensure consistent folder structure
+var albumArtistCache = make(map[string]string) // albumID -> artist name
+var albumArtistCacheMu sync.RWMutex
+
+// cacheAlbumArtist stores the album artist for an album
+func cacheAlbumArtist(albumID, artistName string) {
+	albumArtistCacheMu.Lock()
+	defer albumArtistCacheMu.Unlock()
+	albumArtistCache[albumID] = artistName
+}
+
+// getCachedAlbumArtist retrieves the cached album artist
+func getCachedAlbumArtist(albumID string) (string, bool) {
+	albumArtistCacheMu.RLock()
+	defer albumArtistCacheMu.RUnlock()
+	artist, ok := albumArtistCache[albumID]
+	return artist, ok
+}
 
 // isAlbumMultiDisc checks if an album has multiple discs
 // This uses a cache to avoid repeated API calls
@@ -1771,12 +2121,13 @@ func (m *Manager) downloadPlaylistArtwork(ctx context.Context, playlist *api.Pla
 		size = 1200 // Default to 1200 if not set
 	}
 
-	// Try to extract MD5 from PictureXL URL and build custom size URL
+	// Try to extract MD5 from PictureXL URL and build custom size URL (for Deezer playlists)
 	urlToCheck := playlist.PictureXL
 	if urlToCheck == "" {
 		urlToCheck = playlist.Picture
 	}
 	
+	// Check if this is a Deezer CDN URL
 	if urlToCheck != "" && (strings.Contains(urlToCheck, "cdn-images.dzcdn.net") || strings.Contains(urlToCheck, "e-cdns-images.dzcdn.net")) {
 		parts := strings.Split(urlToCheck, "/")
 		for i, part := range parts {
@@ -1791,6 +2142,7 @@ func (m *Manager) downloadPlaylistArtwork(ctx context.Context, playlist *api.Pla
 	}
 
 	// Fallback to predefined URLs if custom URL couldn't be built
+	// This handles both Deezer and external URLs (e.g., Spotify)
 	if coverURL == "" {
 		coverURL = playlist.PictureXL
 		if coverURL == "" {
@@ -1846,24 +2198,97 @@ func (m *Manager) downloadPlaylistArtwork(ctx context.Context, playlist *api.Pla
 }
 
 // downloadArtistImage downloads the artist image to the artist directory
+// This function is thread-safe and prevents concurrent downloads of the same image
 func (m *Manager) downloadArtistImage(ctx context.Context, artist *api.Artist, artistDir string) error {
-	// Check if artist image file already exists
+	// Add panic recovery with detailed logging
+	defer func() {
+		if r := recover(); r != nil {
+			if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+				fmt.Fprintf(logFile, "[%s] [PANIC] downloadArtistImage panicked: %v\n", time.Now().Format("2006-01-02 15:04:05"), r)
+				fmt.Fprintf(logFile, "[%s] [PANIC] Artist: %v, Dir: %s\n", time.Now().Format("2006-01-02 15:04:05"), artist, artistDir)
+				logFile.Close()
+			}
+		}
+	}()
+	
+	if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		fmt.Fprintf(logFile, "[%s] [ARTIST_IMG] Starting download for artist %v to %s\n", time.Now().Format("2006-01-02 15:04:05"), artist.Name, artistDir)
+		logFile.Close()
+	}
+	
 	artistImagePath := filepath.Join(artistDir, "folder.jpg")
+	
+	// Use mutex to prevent race conditions when multiple tracks try to download the same artist image
+	m.artistImageMu.Lock()
+	
+	if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		fmt.Fprintf(logFile, "[%s] [ARTIST_IMG] Acquired mutex for %s\n", time.Now().Format("2006-01-02 15:04:05"), artistImagePath)
+		logFile.Close()
+	}
+	
+	// Check if already being downloaded by another goroutine
+	if m.artistImageInFlight[artistImagePath] {
+		m.artistImageMu.Unlock()
+		if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+			fmt.Fprintf(logFile, "[%s] [ARTIST_IMG] Already in-flight, skipping: %s\n", time.Now().Format("2006-01-02 15:04:05"), artistImagePath)
+			logFile.Close()
+		}
+		// Another goroutine is downloading this image, skip
+		return nil
+	}
+	
+	// Check if artist image file already exists
 	if _, err := os.Stat(artistImagePath); err == nil {
+		m.artistImageMu.Unlock()
+		if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+			fmt.Fprintf(logFile, "[%s] [ARTIST_IMG] File already exists, skipping: %s\n", time.Now().Format("2006-01-02 15:04:05"), artistImagePath)
+			logFile.Close()
+		}
 		// Artist image already exists, skip download
 		return nil
 	}
+	
+	// Mark as in-flight
+	m.artistImageInFlight[artistImagePath] = true
+	m.artistImageMu.Unlock()
+	
+	if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		fmt.Fprintf(logFile, "[%s] [ARTIST_IMG] Marked as in-flight: %s\n", time.Now().Format("2006-01-02 15:04:05"), artistImagePath)
+		logFile.Close()
+	}
+	
+	// Ensure we clean up the in-flight marker
+	defer func() {
+		m.artistImageMu.Lock()
+		delete(m.artistImageInFlight, artistImagePath)
+		m.artistImageMu.Unlock()
+		if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+			fmt.Fprintf(logFile, "[%s] [ARTIST_IMG] Cleaned up in-flight marker: %s\n", time.Now().Format("2006-01-02 15:04:05"), artistImagePath)
+			logFile.Close()
+		}
+	}()
 
 	// Get full artist details to access MD5 hash for custom size URL
 	artistID := fmt.Sprintf("%v", artist.ID)
+	
+	if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		fmt.Fprintf(logFile, "[%s] [ARTIST_IMG] Calling GetArtist for ID: %s\n", time.Now().Format("2006-01-02 15:04:05"), artistID)
+		logFile.Close()
+	}
+	
 	fullArtist, err := m.deezerAPI.GetArtist(ctx, artistID)
 	if err != nil {
 		// Fallback to basic artist picture if full details unavailable
 		if logFile, err2 := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err2 == nil {
-			fmt.Fprintf(logFile, "[%s] Failed to get full artist details for %s: %v, using fallback\n", time.Now().Format("2006-01-02 15:04:05"), artistID, err)
+			fmt.Fprintf(logFile, "[%s] [ARTIST_IMG] GetArtist failed for %s: %v, using fallback\n", time.Now().Format("2006-01-02 15:04:05"), artistID, err)
 			logFile.Close()
 		}
 		fullArtist = artist
+	} else {
+		if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+			fmt.Fprintf(logFile, "[%s] [ARTIST_IMG] GetArtist succeeded for %s\n", time.Now().Format("2006-01-02 15:04:05"), artistID)
+			logFile.Close()
+		}
 	}
 
 	// Build custom size URL using MD5 if available
@@ -1909,41 +2334,118 @@ func (m *Manager) downloadArtistImage(ctx context.Context, artist *api.Artist, a
 	}
 
 	if pictureURL == "" {
+		if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+			fmt.Fprintf(logFile, "[%s] [ARTIST_IMG] No picture URL available for artist %s\n", time.Now().Format("2006-01-02 15:04:05"), artist.Name)
+			logFile.Close()
+		}
 		return fmt.Errorf("no artist picture available")
 	}
 
-	// Download the artist image
-	req, err := http.NewRequestWithContext(ctx, "GET", pictureURL, nil)
+	if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		fmt.Fprintf(logFile, "[%s] [ARTIST_IMG] Picture URL: %s\n", time.Now().Format("2006-01-02 15:04:05"), pictureURL)
+		logFile.Close()
+	}
+
+	// Download the artist image with timeout
+	// Create a context with timeout to prevent hanging
+	downloadCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	
+	if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		fmt.Fprintf(logFile, "[%s] [ARTIST_IMG] Creating HTTP request\n", time.Now().Format("2006-01-02 15:04:05"))
+		logFile.Close()
+	}
+	
+	req, err := http.NewRequestWithContext(downloadCtx, "GET", pictureURL, nil)
 	if err != nil {
+		if logFile, err2 := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err2 == nil {
+			fmt.Fprintf(logFile, "[%s] [ARTIST_IMG] Failed to create request: %v\n", time.Now().Format("2006-01-02 15:04:05"), err)
+			logFile.Close()
+		}
 		return fmt.Errorf("failed to create artist image request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		fmt.Fprintf(logFile, "[%s] [ARTIST_IMG] Executing HTTP request\n", time.Now().Format("2006-01-02 15:04:05"))
+		logFile.Close()
+	}
+
+	// Use a client with timeout instead of DefaultClient
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+	
+	resp, err := client.Do(req)
 	if err != nil {
+		if logFile, err2 := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err2 == nil {
+			fmt.Fprintf(logFile, "[%s] [ARTIST_IMG] HTTP request failed: %v\n", time.Now().Format("2006-01-02 15:04:05"), err)
+			logFile.Close()
+		}
 		return fmt.Errorf("failed to download artist image: %w", err)
 	}
 	defer resp.Body.Close()
 
+	if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		fmt.Fprintf(logFile, "[%s] [ARTIST_IMG] HTTP response status: %d\n", time.Now().Format("2006-01-02 15:04:05"), resp.StatusCode)
+		logFile.Close()
+	}
+
 	if resp.StatusCode != http.StatusOK {
+		if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+			fmt.Fprintf(logFile, "[%s] [ARTIST_IMG] Bad status code: %d\n", time.Now().Format("2006-01-02 15:04:05"), resp.StatusCode)
+			logFile.Close()
+		}
 		return fmt.Errorf("artist image download failed with status: %d", resp.StatusCode)
 	}
 
 	// Ensure artist directory exists
+	if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		fmt.Fprintf(logFile, "[%s] [ARTIST_IMG] Creating directory: %s\n", time.Now().Format("2006-01-02 15:04:05"), artistDir)
+		logFile.Close()
+	}
+	
 	if err := os.MkdirAll(artistDir, 0755); err != nil {
+		if logFile, err2 := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err2 == nil {
+			fmt.Fprintf(logFile, "[%s] [ARTIST_IMG] Failed to create directory: %v\n", time.Now().Format("2006-01-02 15:04:05"), err)
+			logFile.Close()
+		}
 		return fmt.Errorf("failed to create artist directory: %w", err)
+	}
+
+	if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		fmt.Fprintf(logFile, "[%s] [ARTIST_IMG] Creating file: %s\n", time.Now().Format("2006-01-02 15:04:05"), artistImagePath)
+		logFile.Close()
 	}
 
 	// Create the artist image file
 	artistImageFile, err := os.Create(artistImagePath)
 	if err != nil {
+		if logFile, err2 := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err2 == nil {
+			fmt.Fprintf(logFile, "[%s] [ARTIST_IMG] Failed to create file: %v\n", time.Now().Format("2006-01-02 15:04:05"), err)
+			logFile.Close()
+		}
 		return fmt.Errorf("failed to create artist image file: %w", err)
 	}
 	defer artistImageFile.Close()
 
+	if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		fmt.Fprintf(logFile, "[%s] [ARTIST_IMG] Copying image data\n", time.Now().Format("2006-01-02 15:04:05"))
+		logFile.Close()
+	}
+
 	// Copy the artist image data
 	_, err = io.Copy(artistImageFile, resp.Body)
 	if err != nil {
+		if logFile, err2 := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err2 == nil {
+			fmt.Fprintf(logFile, "[%s] [ARTIST_IMG] Failed to copy data: %v\n", time.Now().Format("2006-01-02 15:04:05"), err)
+			logFile.Close()
+		}
 		return fmt.Errorf("failed to save artist image: %w", err)
+	}
+
+	if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		fmt.Fprintf(logFile, "[%s] [ARTIST_IMG] Successfully downloaded: %s\n", time.Now().Format("2006-01-02 15:04:05"), artistImagePath)
+		logFile.Close()
 	}
 
 	return nil
@@ -1991,6 +2493,17 @@ func (m *Manager) updateParentProgress(parentID string) {
 		parent.Status = "completed"
 		now := time.Now()
 		parent.CompletedAt = &now
+		
+		// DISABLED: Post-album artist image download causes crashes
+		// The inline download during track processing is sufficient
+		// TODO: Investigate why this goroutine causes crashes even with mutex protection
+		/*
+		go func(albumID string) {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			m.downloadMissingArtistImages(ctx, albumID)
+		}(parentID)
+		*/
 	} else {
 		if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
 			fmt.Fprintf(logFile, "[%s] Album %s NOT completed yet: %d/%d tracks, Status=%s\n", time.Now().Format("2006-01-02 15:04:05"), parentID, completedCount, parent.TotalTracks, parent.Status)
@@ -2018,6 +2531,73 @@ func (m *Manager) updateParentProgress(parentID string) {
 		// If parent just completed, also send status notification
 		if parent.Status == "completed" {
 			m.notifier.NotifyCompleted(parentID)
+		}
+	}
+}
+
+// downloadMissingArtistImages scans the album folder and downloads missing artist images
+func (m *Manager) downloadMissingArtistImages(ctx context.Context, albumID string) {
+	// Add panic recovery to prevent crashes
+	defer func() {
+		if r := recover(); r != nil {
+			if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+				fmt.Fprintf(logFile, "[%s] [PANIC RECOVERY] downloadMissingArtistImages panicked: %v\n", time.Now().Format("2006-01-02 15:04:05"), r)
+				logFile.Close()
+			}
+		}
+	}()
+	
+	// Extract the numeric album ID from the full ID (e.g., "album_123456" -> "123456")
+	numericID := strings.TrimPrefix(albumID, "album_")
+	
+	// Get album details to find all unique artists
+	album, err := m.deezerAPI.GetAlbum(ctx, numericID)
+	if err != nil {
+		return
+	}
+	
+	// Check if this is a compilation/soundtrack - if so, don't download artist images
+	if cachedArtist, ok := getCachedAlbumArtist(numericID); ok && cachedArtist == "Various Artists" {
+		if logFile, logErr := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); logErr == nil {
+			fmt.Fprintf(logFile, "[%s] Skipping artist images for compilation/soundtrack album %s\n", 
+				time.Now().Format("2006-01-02 15:04:05"), albumID)
+			logFile.Close()
+		}
+		return
+	}
+	
+	// Build the base output directory
+	baseDir := m.config.Download.OutputDir
+	if baseDir == "" {
+		baseDir = filepath.Join(os.Getenv("HOME"), "Music", "DeeMusic")
+	}
+	
+	// Get the cached album artist - this is the definitive artist for this album
+	cachedArtist, hasCached := getCachedAlbumArtist(numericID)
+	if !hasCached || cachedArtist == "" || cachedArtist == "Various Artists" {
+		return // No cached artist or it's Various Artists
+	}
+	
+	// Build artist folder path using the cached album artist
+	artistDir := filepath.Join(baseDir, cachedArtist)
+	artistImagePath := filepath.Join(artistDir, "folder.jpg")
+	
+	// Check if artist image already exists
+	if _, err := os.Stat(artistImagePath); err == nil {
+		return // Image already exists
+	}
+	
+	// Download the artist image using the album artist
+	albumArtist := &api.Artist{
+		ID:   album.Artist.ID,
+		Name: cachedArtist,
+	}
+	
+	if err := m.downloadArtistImage(ctx, albumArtist, artistDir); err != nil {
+		// Log error but don't fail
+		if logFile, logErr := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); logErr == nil {
+			fmt.Fprintf(logFile, "[%s] Failed to download missing artist image for %s: %v\n", time.Now().Format("2006-01-02 15:04:05"), cachedArtist, err)
+			logFile.Close()
 		}
 	}
 }

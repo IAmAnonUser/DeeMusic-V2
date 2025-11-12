@@ -27,18 +27,17 @@
         
         <!-- Tabbed Content -->
         <TabControl Grid.Row="1" 
-                   Style="{StaticResource MaterialDesignNavigationRailTabControl}">
+                   Style="{StaticResource MaterialDesignTabControl}"
+                   materialDesign:ColorZoneAssist.Mode="PrimaryMid">
             
-            <!-- ARL Tab -->
-            <TabItem Header="ARL">
-                <TabItem.HeaderTemplate>
-                    <DataTemplate>
-                        <StackPanel>
-                            <materialDesign:PackIcon Kind="Key" Width="24" Height="24" HorizontalAlignment="Center"/>
-                            <TextBlock Text="ARL" HorizontalAlignment="Center" Margin="0,4,0,0"/>
-                        </StackPanel>
-                    </DataTemplate>
-                </TabItem.HeaderTemplate>
+            <!-- Deezer Tab -->
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="Music" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBlock Text="Deezer" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </TabItem.Header>
                 
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="16">
                     <StackPanel MaxWidth="600">
@@ -76,16 +75,79 @@
                 </ScrollViewer>
             </TabItem>
             
+            <!-- Spotify Tab -->
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="Spotify" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBlock Text="Spotify" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </TabItem.Header>
+                
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="16">
+                    <StackPanel MaxWidth="600">
+                        <TextBlock Text="Spotify Integration" 
+                                  FontSize="18" 
+                                  FontWeight="SemiBold"
+                                  Margin="0,0,0,16"/>
+                        
+                        <TextBlock Text="Import Spotify playlists by pasting the playlist URL in the search bar. Tracks will be matched with Deezer."
+                                  FontSize="12"
+                                  Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                  TextWrapping="Wrap"
+                                  Margin="0,0,0,8"/>
+                        
+                        <TextBlock FontSize="12"
+                                  Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                  TextWrapping="Wrap"
+                                  Margin="0,0,0,24">
+                            <Run Text="Note: Only public playlists can be imported. Private playlists require user authentication which is not supported." FontStyle="Italic"/>
+                        </TextBlock>
+                        
+                        <TextBox materialDesign:HintAssist.Hint="Spotify Client ID"
+                                Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                Text="{Binding SpotifyClientId, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}"
+                                Margin="0,0,0,16"/>
+                        
+                        <TextBox materialDesign:HintAssist.Hint="Spotify Client Secret"
+                                Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                Text="{Binding SpotifyClientSecret, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}"
+                                Margin="0,0,0,16"/>
+                        
+                        <Button Style="{StaticResource MaterialDesignOutlinedButton}"
+                               Content="Test Connection"
+                               Command="{Binding TestSpotifyConnectionCommand}"
+                               HorizontalAlignment="Left"
+                               Margin="0,0,0,24"/>
+                        
+                        <Separator Margin="0,8,0,24"/>
+                        
+                        <TextBlock Text="How to get Spotify API credentials:"
+                                  FontSize="14"
+                                  FontWeight="Medium"
+                                  Margin="0,0,0,12"/>
+                        
+                        <TextBlock TextWrapping="Wrap" Margin="0,0,0,8">
+                            <Run Text="1. Go to "/>
+                            <Hyperlink NavigateUri="https://developer.spotify.com/dashboard" RequestNavigate="Hyperlink_RequestNavigate">Spotify Developer Dashboard</Hyperlink>
+                        </TextBlock>
+                        <TextBlock Text="2. Log in with your Spotify account" Margin="0,0,0,8"/>
+                        <TextBlock Text="3. Click 'Create app' and fill in the details (name and description can be anything)" Margin="0,0,0,8"/>
+                        <TextBlock Text="4. After creating, click 'Settings' to view your credentials" Margin="0,0,0,8"/>
+                        <TextBlock Text="5. Copy the Client ID and Client Secret" Margin="0,0,0,8"/>
+                        <TextBlock Text="6. Paste them above, click 'Test Connection', then save settings" Margin="0,0,0,8"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+            
             <!-- Artwork Tab -->
-            <TabItem Header="Artwork">
-                <TabItem.HeaderTemplate>
-                    <DataTemplate>
-                        <StackPanel>
-                            <materialDesign:PackIcon Kind="Image" Width="24" Height="24" HorizontalAlignment="Center"/>
-                            <TextBlock Text="Artwork" HorizontalAlignment="Center" Margin="0,4,0,0"/>
-                        </StackPanel>
-                    </DataTemplate>
-                </TabItem.HeaderTemplate>
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="Image" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBlock Text="Artwork" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </TabItem.Header>
                 
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="16">
                     <StackPanel MaxWidth="600">
@@ -187,15 +249,13 @@
             </TabItem>
 
             <!-- Filenaming Tab -->
-            <TabItem Header="Filenaming">
-                <TabItem.HeaderTemplate>
-                    <DataTemplate>
-                        <StackPanel>
-                            <materialDesign:PackIcon Kind="FileDocument" Width="24" Height="24" HorizontalAlignment="Center"/>
-                            <TextBlock Text="Filenaming" HorizontalAlignment="Center" Margin="0,4,0,0"/>
-                        </StackPanel>
-                    </DataTemplate>
-                </TabItem.HeaderTemplate>
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="FileDocument" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBlock Text="Filenaming" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </TabItem.Header>
                 
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="16">
                     <StackPanel MaxWidth="700">
@@ -373,15 +433,13 @@
             </TabItem>
             
             <!-- Lyrics Tab -->
-            <TabItem Header="Lyrics">
-                <TabItem.HeaderTemplate>
-                    <DataTemplate>
-                        <StackPanel>
-                            <materialDesign:PackIcon Kind="TextBox" Width="24" Height="24" HorizontalAlignment="Center"/>
-                            <TextBlock Text="Lyrics" HorizontalAlignment="Center" Margin="0,4,0,0"/>
-                        </StackPanel>
-                    </DataTemplate>
-                </TabItem.HeaderTemplate>
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="TextBox" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBlock Text="Lyrics" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </TabItem.Header>
                 
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="16">
                     <StackPanel MaxWidth="600">

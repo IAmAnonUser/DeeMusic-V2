@@ -1,240 +1,274 @@
-# DeeMusic
+# DeeMusic V2
 
-A modern Windows desktop application for downloading music from Deezer with high-quality audio, automatic metadata, and multi-disc album support.
+A modern, high-performance music downloader for Deezer with Spotify playlist import support. Built with C# (WPF) frontend and Go backend for optimal performance.
 
-![Windows](https://img.shields.io/badge/Windows-10%2F11-blue?logo=windows)
-![.NET](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet)
-![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)
-![License](https://img.shields.io/badge/License-MIT-green)
+![DeeMusic V2](https://img.shields.io/badge/version-2.0.0-blue.svg)
+![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
 
-## Features
+## ✨ Features
 
-### 🎵 Download & Quality
-- Download tracks, albums, playlists, and artist discographies
-- **MP3 320kbps** or **FLAC lossless** quality
-- Concurrent downloads (1-12 simultaneous)
-- Automatic retry on failure
-- Resume interrupted downloads
+### Core Functionality
+- 🎵 **Download Music from Deezer**
+  - Individual tracks
+  - Full albums with proper metadata
+  - Playlists
+  - High-quality audio (MP3 320kbps or FLAC)
 
-### 🎨 Metadata & Organization
-- Automatic ID3 tags (artist, album, title, year, genre)
-- High-resolution album artwork (up to 1500x1500)
-- Lyrics download and embedding
-- **Multi-disc album support** with CD folders
-- Customizable filename templates
-- Flexible folder structure
+- 🎧 **Spotify Integration**
+  - Import Spotify playlists directly
+  - Automatic track matching on Deezer
+  - Preserves playlist structure and metadata
+  - Download Spotify playlists as Deezer tracks
 
-### 🖥️ Modern Interface
-- Native Windows WPF application
-- Dark and light themes
-- Real-time download progress
-- Queue management (pause, resume, cancel)
-- System tray integration
-- Search with instant results
+### Advanced Features
+- ⚡ **High-Performance Downloads**
+  - Concurrent downloads (1-12 simultaneous)
+  - Go-powered backend for speed
+  - Efficient memory management
+  - Resume failed downloads
 
-### ⚡ Performance
-- Go backend for high-speed downloads
-- Efficient memory usage
-- Handles 10,000+ queue items
-- SQLite database for persistence
-- Local-only operation (no HTTP server)
+- 📁 **Smart Organization**
+  - Customizable folder structure
+  - Artist/Album/Track organization
+  - Multi-disc album support with CD folders
+  - Automatic artwork download (up to 1500x1500)
 
-### 📦 Distribution
-- **Installer**: Traditional Windows setup with Start Menu integration
-- **Portable**: Zero-installation, run from USB drive
-- **Self-contained**: No prerequisites required (.NET runtime included)
-- Works on any Windows 10/11 (64-bit) PC
+- 🎨 **Modern UI**
+  - Clean, intuitive interface
+  - Real-time download progress
+  - Queue management
+  - Search with filters (tracks, albums, artists, playlists)
+  - Featured content on home page
 
-## Quick Start
+- 🔧 **Flexible Configuration**
+  - Custom download paths
+  - Filename templates
+  - Quality settings
+  - Concurrent download limits
+  - Spotify API integration
 
-### Download
+### Metadata & Tagging
+- 📝 **Complete ID3 Tags**
+  - Title, Artist, Album
+  - Track number and disc number
+  - Album artist
+  - Release date
+  - Genre
+  - ISRC codes
+  - Embedded album artwork
 
-Get the latest release from [Releases](https://github.com/yourusername/deemusic-go/releases):
+## 🚀 Getting Started
 
-**Installer (Recommended)**
-- `DeeMusic-Setup-{version}.exe` (~150 MB)
-- Installs to Program Files
-- Start Menu shortcuts
-- Automatic updates
+### Prerequisites
+- Windows 10/11
+- .NET 8.0 Runtime
+- Deezer Premium account (ARL token required)
+- (Optional) Spotify API credentials for playlist import
 
-**Portable**
-- `DeeMusic-Portable-{version}.zip` (~150 MB)
-- Extract and run anywhere
-- No installation needed
-- Perfect for USB drives
-- **Note**: Extract the ZIP first, then run `DeeMusic.Desktop.exe` from the extracted folder
+### Installation
 
-### Setup
+1. **Download the latest release** from the [Releases](https://github.com/IAmAnonUser/DeeMusic-V2/releases) page
 
-1. **Get Deezer ARL Token**
-   - Log in to [deezer.com](https://www.deezer.com)
-   - Press F12 → Application → Cookies → deezer.com
-   - Copy the `arl` cookie value (192 characters)
+2. **Extract the archive** to your preferred location
 
-2. **Configure DeeMusic**
-   - Open Settings (⚙️)
-   - Paste your ARL token
-   - Set download folder and quality
-   - Save
+3. **Run `DeeMusic.Desktop.exe`**
 
-3. **Start Downloading**
-   - Search for music
-   - Click download buttons
-   - Monitor progress in queue
+4. **Configure on first launch:**
+   - Enter your Deezer ARL token
+   - Set your download directory
+   - (Optional) Add Spotify API credentials
 
-## System Requirements
+### Getting Your Deezer ARL Token
 
-### For Users
-- Windows 10 or Windows 11 (64-bit)
-- 4 GB RAM (8 GB recommended)
-- 200 MB disk space + downloads
-- Internet connection
+1. Log into [deezer.com](https://www.deezer.com) in your browser
+2. Open Developer Tools (F12)
+3. Go to **Application** → **Cookies** → `https://www.deezer.com`
+4. Copy the value of the `arl` cookie (192 characters)
+5. Paste it into DeeMusic settings
 
-**No other software required!** Both installer and portable versions include everything needed.
+### Getting Spotify API Credentials (Optional)
 
-### For Developers
-- Go 1.21+ (backend)
-- .NET 8.0 SDK (frontend)
-- NSIS 3.0+ (installer, optional)
-- MinGW-w64 (Go CGO)
+1. Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
+2. Create a new app
+3. Copy the **Client ID** and **Client Secret**
+4. Add them in DeeMusic Settings → Spotify Integration
 
-## Building from Source
+## 📖 Usage
 
-### Quick Build
+### Downloading Music
 
-```powershell
-# Build both installer and portable versions
-.\scripts\build-release.ps1
+**Search and Download:**
+1. Enter a search query in the search box
+2. Filter by type (All, Tracks, Albums, Artists, Playlists)
+3. Click the download button on any result
 
-# Skip tests for faster build
-.\scripts\build-release.ps1 -SkipTests
+**Import Spotify Playlist:**
+1. Copy a Spotify playlist URL
+2. Paste it into the search box
+3. Press Enter
+4. Review matched tracks
+5. Click "Download Playlist"
 
-# Clean build with specific version
-.\scripts\build-release.ps1 -Version "2.1.0" -Clean
+### Queue Management
+
+- View all downloads in the Queue tab
+- Monitor progress in real-time
+- Pause/Resume individual downloads
+- Retry failed downloads
+- Clear completed downloads
+
+### Settings
+
+**Download Settings:**
+- Output directory
+- Audio quality (MP3 320 / FLAC)
+- Concurrent downloads (1-12)
+- Create CD folders for multi-disc albums
+- Artwork size (up to 1500x1500)
+
+**Filename Templates:**
+- Customize folder structure
+- Available placeholders:
+  - `{artist}`, `{album_artist}`
+  - `{album}`, `{title}`
+  - `{track_number}`, `{disc_number}`
+  - `{year}`, `{label}`
+
+**Example Templates:**
+- Album track: `{track_number:02d} - {artist} - {title}`
+- Folder: `{artist}/{album}`
+- CD folder: `CD {disc_number}`
+
+## 🏗️ Architecture
+
+### Technology Stack
+- **Frontend:** C# / WPF (.NET 8.0)
+- **Backend:** Go (compiled as C DLL)
+- **Database:** SQLite
+- **APIs:** Deezer API, Spotify Web API
+
+### Project Structure
+```
+DeeMusic-V2/
+├── DeeMusic.Desktop/          # C# WPF Application
+│   ├── ViewModels/            # MVVM ViewModels
+│   ├── Views/                 # WPF Views
+│   ├── Services/              # Service layer
+│   └── Models/                # Data models
+├── internal/                  # Go Backend
+│   ├── api/                   # API clients (Deezer, Spotify)
+│   ├── download/              # Download manager
+│   ├── store/                 # Database layer
+│   └── config/                # Configuration
+├── cmd/deemusic-core/         # Go DLL entry point
+└── docs/                      # Documentation
 ```
 
-Output in `dist/` folder:
-- `DeeMusic-Setup-{version}.exe` - Windows installer
-- `DeeMusic-Portable-{version}.zip` - Portable package
-- `checksums-{version}.txt` - SHA256 checksums
+## 🔧 Building from Source
 
-### Manual Build
+### Prerequisites
+- Visual Studio 2022 or later
+- .NET 8.0 SDK
+- Go 1.21 or later
+- MinGW-w64 (for Go DLL compilation)
 
-```powershell
-# 1. Build Go backend
-$env:GOARCH = "amd64"
-$env:CGO_ENABLED = "1"
-go build -buildmode=c-shared -o cmd/deemusic-core/deemusic-core.dll cmd/deemusic-core/main.go
+### Build Steps
 
-# 2. Build C# frontend
-dotnet publish DeeMusic.Desktop/DeeMusic.Desktop.csproj -c Release -r win-x64 --self-contained true
-
-# 3. Copy DLL to output
-Copy-Item cmd/deemusic-core/deemusic-core.dll DeeMusic.Desktop/bin/Release/net8.0-windows/publish/
+1. **Clone the repository:**
+```bash
+git clone https://github.com/IAmAnonUser/DeeMusic-V2.git
+cd DeeMusic-V2
 ```
 
-See [scripts/README.md](scripts/README.md) for detailed build instructions.
-
-## Architecture
-
-**Frontend**: C# WPF with MVVM pattern
-- Native Windows UI with Material Design
-- P/Invoke for Go DLL integration
-- Async/await for responsive UI
-
-**Backend**: Go compiled as C-shared DLL
-- High-performance download engine
-- Deezer API integration
-- Audio decryption and metadata
-- SQLite queue persistence
-
-**Communication**: Direct function calls via P/Invoke
-- C# → Go: Function calls
-- Go → C#: Callback delegates for progress
-- No HTTP server, fully local
-
-## Configuration
-
-Settings stored in `%APPDATA%\DeeMusicV2\settings.json`:
-
-```json
-{
-  "deezer": {
-    "arl": "your_arl_token_here"
-  },
-  "download": {
-    "output_dir": "C:\\Users\\YourName\\Music\\DeeMusic",
-    "quality": "MP3_320",
-    "concurrent_downloads": 8,
-    "create_cd_folder": true,
-    "cd_folder_template": "CD {disc_number}",
-    "embed_artwork": true,
-    "artwork_size": 1200
-  }
-}
+2. **Build the Go backend:**
+```bash
+go build -buildmode=c-shared -o deemusic-core.dll ./cmd/deemusic-core
 ```
 
-## Multi-Disc Album Support
-
-DeeMusic automatically detects and organizes multi-disc albums:
-
-```
-Artist/
-└── Album Name/
-    ├── CD 1/
-    │   ├── 01 - Track.mp3
-    │   └── 02 - Track.mp3
-    └── CD 2/
-        ├── 01 - Track.mp3
-        └── 02 - Track.mp3
+3. **Build the C# frontend:**
+```bash
+dotnet build DeeMusic.Desktop/DeeMusic.Desktop.csproj
 ```
 
-Configurable via `create_cd_folder` and `cd_folder_template` settings.
-
-## Project Structure
-
-```
-deemusic/
-├── cmd/deemusic-core/      # Go DLL entry point
-├── internal/               # Go backend packages
-│   ├── api/               # Deezer API client
-│   ├── download/          # Download manager
-│   ├── decryption/        # Audio decryption
-│   ├── metadata/          # Metadata & lyrics
-│   └── store/             # SQLite persistence
-├── DeeMusic.Desktop/       # C# WPF frontend
-│   ├── ViewModels/        # MVVM ViewModels
-│   ├── Views/             # XAML views
-│   ├── Services/          # P/Invoke wrapper
-│   └── Resources/         # Themes & styles
-└── scripts/               # Build scripts
+4. **Copy the DLL:**
+```bash
+copy deemusic-core.dll DeeMusic.Desktop\bin\Debug\net8.0-windows\
 ```
 
-## Contributing
+5. **Run:**
+```bash
+dotnet run --project DeeMusic.Desktop/DeeMusic.Desktop.csproj
+```
 
-Contributions welcome! Please:
+Or use the provided build script:
+```bash
+.\run.bat
+```
+
+## 📝 Recent Updates
+
+### Version 2.0.0 (Latest)
+
+**New Features:**
+- ✅ Spotify playlist import with automatic track matching
+- ✅ Multi-disc album support with CD folder creation
+- ✅ High-resolution artwork download (up to 1500x1500)
+- ✅ Featured content on home page (New Releases, Top Albums, etc.)
+- ✅ Improved search with category filters
+- ✅ Real-time download progress tracking
+
+**Improvements:**
+- ✅ Fixed progress bar accuracy for playlists
+- ✅ Prevented duplicate track downloads
+- ✅ Better error handling and retry logic
+- ✅ Improved navigation flow
+- ✅ Enhanced UI responsiveness
+- ✅ Optimized concurrent download performance
+
+**Bug Fixes:**
+- ✅ Fixed playlist progress not reaching 100%
+- ✅ Fixed navigation issues after Spotify import
+- ✅ Fixed multi-disc album detection
+- ✅ Fixed track retry logic causing progress drops
+- ✅ Fixed completed tracks being re-downloaded
+
+## 🐛 Known Issues
+
+- Some Spotify tracks may not be available on Deezer
+- Very large playlists (500+ tracks) may take time to process
+- Deezer ARL tokens expire periodically and need to be refreshed
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
 1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+## ⚠️ Disclaimer
 
-## License
+This tool is for educational purposes only. Users are responsible for complying with Deezer's Terms of Service and applicable copyright laws. The developers are not responsible for any misuse of this software.
 
-MIT License - see [LICENSE](LICENSE) file for details.
+## 📄 License
 
-## Disclaimer
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-**For personal use only.** Respect copyright laws and artist rights. Only download music you have the right to access. The developers are not responsible for misuse of this software.
+## 🙏 Acknowledgments
 
-## Acknowledgments
-
-- Original Python version of DeeMusic
 - Deezer for their music streaming service
-- Open source community
+- Spotify for their Web API
+- The Go and .NET communities for excellent tools and libraries
+
+## 📧 Support
+
+For issues, questions, or suggestions:
+- Open an [Issue](https://github.com/IAmAnonUser/DeeMusic-V2/issues)
+- Check existing issues for solutions
 
 ---
 
-**Made with ❤️ for music lovers**
+**Note:** This is a complete rewrite of DeeMusic V1 (Python) with improved performance, stability, and features.
