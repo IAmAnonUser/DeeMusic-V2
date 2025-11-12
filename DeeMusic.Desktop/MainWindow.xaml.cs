@@ -19,6 +19,11 @@ namespace DeeMusic.Desktop
     {
         private bool _minimizeToTray = true;
         private bool _isClosing = false;
+        
+        // CRITICAL: Static field to prevent GC from collecting the service
+        // The service MUST live for the entire application lifetime
+        private static DeeMusicService? _staticService;
+        private readonly DeeMusicService _service;
 
         public MainWindow()
         {
@@ -30,8 +35,14 @@ namespace DeeMusic.Desktop
                 NotificationService.Instance.Initialize(RootGrid);
                 
                 // Initialize DataContext with DeeMusicService
-                var service = new DeeMusicService();
-                var mainViewModel = new MainViewModel(service);
+                // IMPORTANT: Use static field to absolutely prevent garbage collection
+                if (_staticService == null)
+                {
+                    _staticService = new DeeMusicService();
+                }
+                _service = _staticService;
+                
+                var mainViewModel = new MainViewModel(_service);
                 DataContext = mainViewModel;
                 
                 // Subscribe to settings requested event
@@ -40,6 +51,7 @@ namespace DeeMusic.Desktop
                 // Subscribe to search box events to enable search from any page
                 SearchBox.GotFocus += SearchBox_GotFocus;
                 SearchBox.PreviewKeyDown += SearchBox_PreviewKeyDown;
+                SearchBox.TextChanged += SearchBox_TextChanged;
                 
                 SearchBox.Focus();
                 
@@ -500,7 +512,7 @@ namespace DeeMusic.Desktop
         }
 
         /// <summary>
-        /// Handle search box getting focus - navigate to search view if not already there
+        /// Handle search box getting focus - navigate to search view when clicked
         /// </summary>
         private void SearchBox_GotFocus(object sender, RoutedEventArgs e)
         {
@@ -513,15 +525,19 @@ namespace DeeMusic.Desktop
                     return;
                 }
 
-                // Check if current view is SearchViewModel (not just CurrentPage)
                 bool isOnSearchView = mainViewModel.CurrentView == mainViewModel.SearchViewModel;
-                LoggingService.Instance.LogInfo($"SearchBox_GotFocus: CurrentPage={mainViewModel.CurrentPage}, IsOnSearchView={isOnSearchView}, CurrentView={mainViewModel.CurrentView?.GetType().Name}");
+                LoggingService.Instance.LogInfo($"SearchBox_GotFocus: CurrentPage={mainViewModel.CurrentPage}, IsOnSearchView={isOnSearchView}");
 
-                // If we're not on the search view, navigate to it
+                // Navigate to search view when user clicks the search box
+                // Use Dispatcher to delay navigation until after current input is processed
                 if (!isOnSearchView)
                 {
-                    LoggingService.Instance.LogInfo("SearchBox_GotFocus: Navigating to Search page");
-                    mainViewModel.NavigateCommand?.Execute("Search");
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        mainViewModel.NavigateCommand?.Execute("Search");
+                        // Restore focus to search box after navigation
+                        SearchBox.Focus();
+                    }), System.Windows.Threading.DispatcherPriority.Input);
                 }
             }
             catch (Exception ex)
@@ -531,7 +547,16 @@ namespace DeeMusic.Desktop
         }
 
         /// <summary>
-        /// Handle key presses in search box - navigate to search view when typing
+        /// Handle text changes in search box - not used, navigation happens on focus
+        /// </summary>
+        private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            // Empty - navigation happens in GotFocus when user clicks the search box
+            // Typing will work normally since we're already on the search view
+        }
+
+        /// <summary>
+        /// Handle key presses in search box - execute search on Enter
         /// </summary>
         private void SearchBox_PreviewKeyDown(object sender, KeyEventArgs e)
         {
@@ -541,20 +566,19 @@ namespace DeeMusic.Desktop
                 if (mainViewModel == null)
                     return;
 
-                // If user starts typing and we're not on search view, navigate to it
-                // Ignore navigation keys (Tab, Arrow keys, etc.)
-                if (e.Key != Key.Tab && e.Key != Key.Escape && 
-                    e.Key != Key.Up && e.Key != Key.Down && 
-                    e.Key != Key.Left && e.Key != Key.Right)
+                // If user presses Enter, execute search regardless of current view
+                if (e.Key == Key.Enter)
                 {
-                    // Check if current view is SearchViewModel
                     bool isOnSearchView = mainViewModel.CurrentView == mainViewModel.SearchViewModel;
-                    
                     if (!isOnSearchView)
                     {
-                        LoggingService.Instance.LogInfo($"SearchBox_PreviewKeyDown: Key={e.Key}, CurrentView={mainViewModel.CurrentView?.GetType().Name}, Navigating to Search");
+                        // Navigate to search view first
                         mainViewModel.NavigateCommand?.Execute("Search");
                     }
+                    // Execute search command
+                    mainViewModel.SearchViewModel?.SearchCommand?.Execute(null);
+                    e.Handled = true;
+                    return;
                 }
             }
             catch (Exception ex)

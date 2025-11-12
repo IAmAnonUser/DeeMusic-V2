@@ -19,6 +19,7 @@ namespace DeeMusic.Desktop.ViewModels
     public class SearchViewModel : INotifyPropertyChanged
     {
         private readonly DeeMusicService _service;
+        private readonly SpotifyService _spotifyService;
         private string _searchQuery = string.Empty;
         private string _selectedSearchType = "all";
         private bool _isSearching;
@@ -42,6 +43,17 @@ namespace DeeMusic.Desktop.ViewModels
                 {
                     _searchQuery = value;
                     OnPropertyChanged();
+                    
+                    // If user starts typing while in ViewAll mode, exit ViewAll and show search
+                    // But preserve the search query they're typing
+                    if (IsViewingAll && !string.IsNullOrWhiteSpace(value))
+                    {
+                        // Clear view all state but keep the search query
+                        IsViewingAll = false;
+                        CurrentViewAllCategory = null;
+                        ViewAllItems.Clear();
+                        // Don't clear SearchQuery or results - user is typing a new search
+                    }
                 }
             }
         }
@@ -359,6 +371,11 @@ namespace DeeMusic.Desktop.ViewModels
         /// Event raised when navigation to artist detail is requested
         /// </summary>
         public event EventHandler<Artist>? NavigateToArtistRequested;
+        
+        /// <summary>
+        /// Event raised when navigation to playlist detail is requested
+        /// </summary>
+        public event EventHandler<Playlist>? NavigateToPlaylistRequested;
 
         #endregion
 
@@ -429,6 +446,7 @@ namespace DeeMusic.Desktop.ViewModels
         public SearchViewModel(DeeMusicService service)
         {
             _service = service ?? throw new ArgumentNullException(nameof(service));
+            _spotifyService = new SpotifyService(service);
 
             // Initialize commands
             SearchCommand = new AsyncRelayCommand(ExecuteSearchAsync, CanExecuteSearch);
@@ -533,15 +551,74 @@ namespace DeeMusic.Desktop.ViewModels
             {
                 LoggingService.Instance.LogInfo($"Viewing playlist details: {playlist.Title} (ID: {playlist.Id})");
                 
-                // For now, just download the playlist since we don't have a playlist detail view yet
-                // In the future, this could navigate to a playlist detail page
-                return DownloadPlaylistAsync(playlist);
+                // Navigate to playlist detail view
+                NavigateToPlaylistRequested?.Invoke(this, playlist);
+                return Task.CompletedTask;
             }
             catch (Exception ex)
             {
                 LoggingService.Instance.LogError($"Failed to handle playlist view for {playlist.Title}", ex);
                 return Task.CompletedTask;
             }
+        }
+        
+        /// <summary>
+        /// Import a Spotify playlist
+        /// </summary>
+        private async Task ImportSpotifyPlaylistAsync(string spotifyUrl)
+        {
+            IsSearching = true;
+            
+            try
+            {
+                LoggingService.Instance.LogInfo($"Importing Spotify playlist: {spotifyUrl}");
+                NotificationService.Instance.ShowInfo("Importing Spotify playlist...");
+                
+                var playlist = await _spotifyService.ImportPlaylistAsync(spotifyUrl);
+                
+                if (playlist != null)
+                {
+                    LoggingService.Instance.LogInfo($"Successfully imported playlist: {playlist.Title} with {playlist.Tracks?.Data?.Count ?? 0} tracks");
+                    NotificationService.Instance.ShowSuccess($"Imported '{playlist.Title}' ({playlist.Tracks?.Data?.Count ?? 0} tracks matched)");
+                    
+                    // Clear search query and results before navigating
+                    // This ensures when user presses back, they return to a clean search view
+                    SearchQuery = string.Empty;
+                    ClearResults();
+                    
+                    // Navigate to playlist detail view
+                    NavigateToPlaylistRequested?.Invoke(this, playlist);
+                }
+                else
+                {
+                    NotificationService.Instance.ShowError("Failed to import Spotify playlist");
+                }
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("not configured"))
+            {
+                LoggingService.Instance.LogWarning("Spotify API not configured");
+                NotificationService.Instance.ShowError("Spotify API credentials not configured. Please add them in Settings.");
+                
+                // Open settings
+                SettingsRequested?.Invoke(this, EventArgs.Empty);
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Instance.LogError($"Failed to import Spotify playlist: {spotifyUrl}", ex);
+                NotificationService.Instance.ShowError($"Failed to import Spotify playlist: {ex.Message}");
+            }
+            finally
+            {
+                IsSearching = false;
+            }
+        }
+        
+        /// <summary>
+        /// Configure Spotify service with credentials
+        /// </summary>
+        public void ConfigureSpotify(string clientId, string clientSecret)
+        {
+            _spotifyService.Configure(clientId, clientSecret);
         }
 
         /// <summary>
@@ -680,6 +757,14 @@ namespace DeeMusic.Desktop.ViewModels
                 return;
 
             LoggingService.Instance.LogInfo($"ExecuteSearchAsync called: query='{SearchQuery}', type='{SelectedSearchType}'");
+            
+            // Check if it's a Spotify playlist URL
+            if (SearchQuery.Contains("spotify.com/playlist") || SearchQuery.StartsWith("spotify:playlist:"))
+            {
+                await ImportSpotifyPlaylistAsync(SearchQuery);
+                return;
+            }
+            
             IsSearching = true;
             ClearResults();
 

@@ -4,25 +4,55 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:controls="clr-namespace:DeeMusic.Desktop.Controls"
+             xmlns:views="clr-namespace:DeeMusic.Desktop.Views"
              mc:Ignorable="d" 
              d:DesignHeight="600" d:DesignWidth="800">
     
-    <ScrollViewer VerticalScrollBarVisibility="Auto"
-                 HorizontalScrollBarVisibility="Disabled">
-        <Grid Margin="24">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-            </Grid.RowDefinitions>
-            
-            <!-- Playlist Header -->
-            <Grid Grid.Row="0" Margin="0,0,0,24">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+        <views:AlternationIndexConverter x:Key="AlternationIndexConverter"/>
+    </UserControl.Resources>
+    
+    <Grid>
+        <!-- Loading Indicator -->
+        <ProgressBar Style="{StaticResource MaterialDesignCircularProgressBar}"
+                    Width="48"
+                    Height="48"
+                    IsIndeterminate="True"
+                    Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"/>
+        
+        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                     HorizontalScrollBarVisibility="Disabled">
+            <Grid Margin="24">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                
+                <!-- Back Button -->
+                <Button Grid.Row="0"
+                       Style="{StaticResource MaterialDesignIconButton}"
+                       Command="{Binding BackCommand}"
+                       Width="40"
+                       Height="40"
+                       HorizontalAlignment="Left"
+                       Margin="0,0,0,16"
+                       ToolTip="Back">
+                    <materialDesign:PackIcon Kind="ArrowLeft" Width="24" Height="24"/>
+                </Button>
+                
+                <!-- Playlist Header -->
+                <Grid Grid.Row="1" Margin="0,0,0,24">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 
-                <!-- Playlist Cover -->
+                <!-- Playlist Artwork -->
                 <Border Grid.Column="0"
                        Width="240"
                        Height="240"
@@ -33,7 +63,7 @@
                                         ShadowDepth="4" 
                                         Opacity="0.3"/>
                     </Border.Effect>
-                    <Image Source="{Binding Playlist.CoverUrl}" 
+                    <controls:CachedImage ImageUrl="{Binding Playlist.PictureBig}" 
                           Stretch="UniformToFill"/>
                 </Border>
                 
@@ -54,35 +84,13 @@
                               TextWrapping="Wrap"
                               Margin="0,0,0,8"/>
                     
-                    <TextBlock Text="{Binding Playlist.Creator}" 
-                              FontSize="16"
+                    <TextBlock Text="{Binding Playlist.Creator.Name}"
+                              FontSize="18"
                               Foreground="{DynamicResource MaterialDesignBodyLight}"
-                              Margin="0,0,0,4"/>
-                    
-                    <TextBlock Text="{Binding Playlist.Description}" 
-                              FontSize="14"
-                              Foreground="{DynamicResource MaterialDesignBodyLight}"
-                              TextWrapping="Wrap"
-                              MaxWidth="500"
-                              HorizontalAlignment="Left"
                               Margin="0,0,0,16"/>
                     
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,24">
                         <TextBlock Text="{Binding Playlist.TrackCount, StringFormat='{}{0} tracks'}" 
-                                  FontSize="14"
-                                  Foreground="{DynamicResource MaterialDesignBodyLight}"/>
-                        <TextBlock Text=" • " 
-                                  FontSize="14"
-                                  Foreground="{DynamicResource MaterialDesignBodyLight}"
-                                  Margin="8,0"/>
-                        <TextBlock Text="{Binding Playlist.Duration}" 
-                                  FontSize="14"
-                                  Foreground="{DynamicResource MaterialDesignBodyLight}"/>
-                        <TextBlock Text=" • " 
-                                  FontSize="14"
-                                  Foreground="{DynamicResource MaterialDesignBodyLight}"
-                                  Margin="8,0"/>
-                        <TextBlock Text="{Binding Playlist.FanCount, StringFormat='{}{0:N0} fans'}" 
                                   FontSize="14"
                                   Foreground="{DynamicResource MaterialDesignBodyLight}"/>
                     </StackPanel>
@@ -91,7 +99,7 @@
                     <Button Style="{StaticResource MaterialDesignRaisedButton}"
                            Command="{Binding DownloadPlaylistCommand}"
                            Height="48"
-                           Width="220"
+                           Width="200"
                            HorizontalAlignment="Left">
                         <StackPanel Orientation="Horizontal">
                             <materialDesign:PackIcon Kind="Download" 
@@ -109,101 +117,164 @@
             </Grid>
             
             <!-- Track Listing -->
-            <materialDesign:Card Grid.Row="1" 
+            <materialDesign:Card Grid.Row="2" 
                                UniformCornerRadius="8"
                                Padding="0">
-                <ListView ItemsSource="{Binding Playlist.Tracks}"
-                         SelectionMode="Single"
-                         Background="Transparent"
-                         BorderThickness="0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
                     
-                    <ListView.ItemContainerStyle>
-                        <Style TargetType="ListViewItem" BasedOn="{StaticResource MaterialDesignListBoxItem}">
-                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-                            <Setter Property="Padding" Value="16,12"/>
-                        </Style>
-                    </ListView.ItemContainerStyle>
+                    <!-- Column Headers -->
+                    <Border Grid.Row="0"
+                           Background="{DynamicResource MaterialDesignToolBarBackground}"
+                           Padding="16,12"
+                           BorderBrush="{DynamicResource MaterialDesignDivider}"
+                           BorderThickness="0,0,0,1">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="40"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="200"/>
+                                <ColumnDefinition Width="100"/>
+                                <ColumnDefinition Width="50"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <TextBlock Grid.Column="0"
+                                      Text="#"
+                                      FontSize="12"
+                                      FontWeight="SemiBold"
+                                      Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                      TextAlignment="Center"/>
+                            
+                            <TextBlock Grid.Column="1"
+                                      Text="TITLE"
+                                      FontSize="12"
+                                      FontWeight="SemiBold"
+                                      Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                      Margin="16,0"/>
+                            
+                            <TextBlock Grid.Column="2"
+                                      Text="ARTIST"
+                                      FontSize="12"
+                                      FontWeight="SemiBold"
+                                      Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                      Margin="16,0"/>
+                            
+                            <TextBlock Grid.Column="3"
+                                      Text="DURATION"
+                                      FontSize="12"
+                                      FontWeight="SemiBold"
+                                      Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                      Margin="16,0"/>
+                        </Grid>
+                    </Border>
                     
-                    <ListView.ItemTemplate>
-                        <DataTemplate>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="40"/>
-                                    <ColumnDefinition Width="50"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                
-                                <!-- Track Number -->
-                                <TextBlock Grid.Column="0"
-                                          Text="{Binding TrackNumber}"
-                                          FontSize="14"
-                                          Foreground="{DynamicResource MaterialDesignBodyLight}"
-                                          VerticalAlignment="Center"
-                                          TextAlignment="Center"/>
-                                
-                                <!-- Album Cover Thumbnail -->
-                                <Border Grid.Column="1"
-                                       Width="40"
-                                       Height="40"
-                                       CornerRadius="4"
-                                       Background="{DynamicResource MaterialDesignDivider}"
-                                       Margin="8,0">
-                                    <Image Source="{Binding CoverUrl}" 
-                                          Stretch="UniformToFill"/>
-                                </Border>
-                                
-                                <!-- Track Info -->
-                                <StackPanel Grid.Column="2"
-                                           VerticalAlignment="Center"
-                                           Margin="8,0">
-                                    <TextBlock Text="{Binding Title}"
+                    <!-- Track List -->
+                    <ListView Grid.Row="1"
+                             ItemsSource="{Binding Tracks}"
+                             SelectionMode="Single"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             PreviewMouseWheel="ListView_PreviewMouseWheel"
+                             AlternationCount="999">
+                        
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem" BasedOn="{StaticResource MaterialDesignListBoxItem}">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                <Setter Property="Padding" Value="16,12"/>
+                            </Style>
+                        </ListView.ItemContainerStyle>
+                        
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="40"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="200"/>
+                                        <ColumnDefinition Width="100"/>
+                                        <ColumnDefinition Width="50"/>
+                                    </Grid.ColumnDefinitions>
+                                    
+                                    <!-- Track Number -->
+                                    <TextBlock Grid.Column="0"
                                               FontSize="14"
-                                              TextTrimming="CharacterEllipsis"/>
-                                    <TextBlock Text="{Binding Artist}"
-                                              FontSize="12"
                                               Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                              VerticalAlignment="Center"
+                                              TextAlignment="Center">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <!-- Use TrackNumber if available and not 0 -->
+                                                <Setter Property="Text" Value="{Binding TrackNumber}"/>
+                                                <Style.Triggers>
+                                                    <!-- Fall back to AlternationIndex if TrackNumber is 0 -->
+                                                    <DataTrigger Binding="{Binding TrackNumber}" Value="0">
+                                                        <Setter Property="Text">
+                                                            <Setter.Value>
+                                                                <Binding Path="(ItemsControl.AlternationIndex)" 
+                                                                        RelativeSource="{RelativeSource AncestorType=ListViewItem}"
+                                                                        Converter="{StaticResource AlternationIndexConverter}"/>
+                                                            </Setter.Value>
+                                                        </Setter>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    
+                                    <!-- Track Title -->
+                                    <TextBlock Grid.Column="1"
+                                              Text="{Binding Title}"
+                                              FontSize="14"
+                                              VerticalAlignment="Center"
                                               TextTrimming="CharacterEllipsis"
-                                              Margin="0,2,0,0"/>
-                                </StackPanel>
-                                
-                                <!-- Album Name -->
-                                <TextBlock Grid.Column="3"
-                                          Text="{Binding Album}"
-                                          FontSize="13"
-                                          Foreground="{DynamicResource MaterialDesignBodyLight}"
-                                          VerticalAlignment="Center"
-                                          TextTrimming="CharacterEllipsis"
-                                          MaxWidth="200"
-                                          Margin="16,0"/>
-                                
-                                <!-- Duration -->
-                                <TextBlock Grid.Column="4"
-                                          Text="{Binding Duration}"
-                                          FontSize="14"
-                                          Foreground="{DynamicResource MaterialDesignBodyLight}"
-                                          VerticalAlignment="Center"
-                                          Margin="16,0"/>
-                                
-                                <!-- Download Button -->
-                                <Button Grid.Column="5"
-                                       Style="{StaticResource MaterialDesignIconButton}"
-                                       Width="36"
-                                       Height="36"
-                                       Command="{Binding DataContext.DownloadTrackCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                       CommandParameter="{Binding}"
-                                       ToolTip="Download Track">
-                                    <materialDesign:PackIcon Kind="Download" 
-                                                           Width="18" 
-                                                           Height="18"/>
-                                </Button>
-                            </Grid>
-                        </DataTemplate>
-                    </ListView.ItemTemplate>
-                </ListView>
+                                              Margin="16,0"/>
+                                    
+                                    <!-- Artist -->
+                                    <TextBlock Grid.Column="2"
+                                              FontSize="14"
+                                              Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                              VerticalAlignment="Center"
+                                              TextTrimming="CharacterEllipsis"
+                                              Margin="16,0"
+                                              Cursor="Hand">
+                                        <Hyperlink Command="{Binding DataContext.ViewArtistCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                  CommandParameter="{Binding Artist}"
+                                                  TextDecorations="None"
+                                                  Foreground="{DynamicResource MaterialDesignBodyLight}">
+                                            <Run Text="{Binding Artist.Name, Mode=OneWay}"/>
+                                        </Hyperlink>
+                                    </TextBlock>
+                                    
+                                    <!-- Duration -->
+                                    <TextBlock Grid.Column="3"
+                                              Text="{Binding FormattedDuration}"
+                                              FontSize="14"
+                                              Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                              VerticalAlignment="Center"
+                                              Margin="16,0"/>
+                                    
+                                    <!-- Download Button -->
+                                    <Button Grid.Column="4"
+                                           Style="{StaticResource MaterialDesignIconButton}"
+                                           Width="36"
+                                           Height="36"
+                                           Command="{Binding DataContext.DownloadTrackCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                           CommandParameter="{Binding}"
+                                           ToolTip="Download Track">
+                                        <materialDesign:PackIcon Kind="Download" 
+                                                               Width="18" 
+                                                               Height="18"/>
+                                    </Button>
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </Grid>
             </materialDesign:Card>
-        </Grid>
-    </ScrollViewer>
+            </Grid>
+        </ScrollViewer>
+    </Grid>
 </UserControl>

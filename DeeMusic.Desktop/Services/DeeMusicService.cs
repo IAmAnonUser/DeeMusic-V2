@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -334,6 +336,38 @@ namespace DeeMusic.Desktop.Services
                     {
                         var errorMsg = GoBackend.GetErrorMessage(result);
                         throw new BackendException($"Failed to download playlist: {errorMsg}", result);
+                    }
+                });
+            });
+        }
+        
+        /// <summary>
+        /// Download a custom playlist (e.g., from Spotify import)
+        /// </summary>
+        public async Task DownloadCustomPlaylistAsync(string playlistID, string title, string creator, List<string> trackIDs, string pictureUrl = "", string? quality = null)
+        {
+            EnsureInitialized();
+
+            await ExecuteWithRetryAsync(async () =>
+            {
+                await Task.Run(() =>
+                {
+                    var playlistData = new
+                    {
+                        id = playlistID,
+                        title = title,
+                        description = "",
+                        creator = creator,
+                        track_ids = trackIDs,
+                        picture_url = pictureUrl
+                    };
+                    
+                    var json = System.Text.Json.JsonSerializer.Serialize(playlistData);
+                    var result = GoBackend.DownloadCustomPlaylist(json, quality);
+                    if (result != 0)
+                    {
+                        var errorMsg = GoBackend.GetErrorMessage(result);
+                        throw new BackendException($"Failed to download custom playlist: {errorMsg}", result);
                     }
                 });
             });

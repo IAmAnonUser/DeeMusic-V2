@@ -279,7 +279,16 @@ namespace DeeMusic.Desktop.ViewModels
             catch (Exception ex)
             {
                 LoggingService.Instance.LogError($"Failed to download album {album.Title}", ex);
-                NotificationService.Instance.ShowError($"Failed to download '{album.Title}'");
+                
+                // Check if it's already in queue
+                if (ex.Message.Contains("already in queue", StringComparison.OrdinalIgnoreCase))
+                {
+                    NotificationService.Instance.ShowWarning($"'{album.Title}' is already in the queue");
+                }
+                else
+                {
+                    NotificationService.Instance.ShowError($"Failed to download '{album.Title}'");
+                }
             }
         }
 
@@ -335,26 +344,56 @@ namespace DeeMusic.Desktop.ViewModels
                 return;
             }
 
-            try
+            LoggingService.Instance.LogInfo($"Starting bulk download of {_allAlbums.Count} albums");
+            NotificationService.Instance.ShowInfo($"Adding {_allAlbums.Count} albums to queue...");
+            
+            int addedCount = 0;
+            int skippedCount = 0;
+            int failedCount = 0;
+            
+            foreach (var album in _allAlbums)
             {
-                LoggingService.Instance.LogInfo($"Starting bulk download of {_allAlbums.Count} albums");
-                NotificationService.Instance.ShowInfo($"Adding {_allAlbums.Count} albums to queue...");
-                
-                foreach (var album in _allAlbums)
+                try
                 {
                     await _service.DownloadAlbumAsync(album.Id);
+                    addedCount++;
                 }
-                
-                NotificationService.Instance.ShowSuccess($"Added {_allAlbums.Count} albums to queue");
-                
-                // Trigger queue refresh
+                catch (Exception ex)
+                {
+                    if (ex.Message.Contains("already in queue", StringComparison.OrdinalIgnoreCase))
+                    {
+                        LoggingService.Instance.LogInfo($"Album '{album.Title}' already in queue, skipping");
+                        skippedCount++;
+                    }
+                    else
+                    {
+                        LoggingService.Instance.LogError($"Failed to add album '{album.Title}' to queue", ex);
+                        failedCount++;
+                    }
+                }
+            }
+            
+            // Show summary notification
+            if (addedCount > 0)
+            {
+                NotificationService.Instance.ShowSuccess($"Added {addedCount} album(s) to queue" + 
+                    (skippedCount > 0 ? $" ({skippedCount} already in queue)" : ""));
+            }
+            else if (skippedCount > 0)
+            {
+                NotificationService.Instance.ShowWarning($"All {skippedCount} album(s) already in queue");
+            }
+            
+            if (failedCount > 0)
+            {
+                NotificationService.Instance.ShowError($"Failed to add {failedCount} album(s)");
+            }
+            
+            // Trigger queue refresh if any were added
+            if (addedCount > 0)
+            {
                 await Task.Delay(500);
                 QueueRefreshRequested?.Invoke(this, EventArgs.Empty);
-            }
-            catch (Exception ex)
-            {
-                LoggingService.Instance.LogError("Failed to download all albums", ex);
-                NotificationService.Instance.ShowError("Failed to download all albums");
             }
         }
 
@@ -369,26 +408,56 @@ namespace DeeMusic.Desktop.ViewModels
                 return;
             }
 
-            try
+            LoggingService.Instance.LogInfo($"Starting bulk download of {_allSingles.Count} singles");
+            NotificationService.Instance.ShowInfo($"Adding {_allSingles.Count} singles to queue...");
+            
+            int addedCount = 0;
+            int skippedCount = 0;
+            int failedCount = 0;
+            
+            foreach (var single in _allSingles)
             {
-                LoggingService.Instance.LogInfo($"Starting bulk download of {_allSingles.Count} singles");
-                NotificationService.Instance.ShowInfo($"Adding {_allSingles.Count} singles to queue...");
-                
-                foreach (var single in _allSingles)
+                try
                 {
                     await _service.DownloadAlbumAsync(single.Id);
+                    addedCount++;
                 }
-                
-                NotificationService.Instance.ShowSuccess($"Added {_allSingles.Count} singles to queue");
-                
-                // Trigger queue refresh
+                catch (Exception ex)
+                {
+                    if (ex.Message.Contains("already in queue", StringComparison.OrdinalIgnoreCase))
+                    {
+                        LoggingService.Instance.LogInfo($"Single '{single.Title}' already in queue, skipping");
+                        skippedCount++;
+                    }
+                    else
+                    {
+                        LoggingService.Instance.LogError($"Failed to add single '{single.Title}' to queue", ex);
+                        failedCount++;
+                    }
+                }
+            }
+            
+            // Show summary notification
+            if (addedCount > 0)
+            {
+                NotificationService.Instance.ShowSuccess($"Added {addedCount} single(s) to queue" + 
+                    (skippedCount > 0 ? $" ({skippedCount} already in queue)" : ""));
+            }
+            else if (skippedCount > 0)
+            {
+                NotificationService.Instance.ShowWarning($"All {skippedCount} single(s) already in queue");
+            }
+            
+            if (failedCount > 0)
+            {
+                NotificationService.Instance.ShowError($"Failed to add {failedCount} single(s)");
+            }
+            
+            // Trigger queue refresh if any were added
+            if (addedCount > 0)
+            {
                 await Task.Delay(500);
                 QueueRefreshRequested?.Invoke(this, EventArgs.Empty);
-            }
-            catch (Exception ex)
-            {
-                LoggingService.Instance.LogError("Failed to download all singles", ex);
-                NotificationService.Instance.ShowError("Failed to download all singles");
             }
         }
 
@@ -403,26 +472,56 @@ namespace DeeMusic.Desktop.ViewModels
                 return;
             }
 
-            try
+            LoggingService.Instance.LogInfo($"Starting bulk download of {_allEPs.Count} EPs");
+            NotificationService.Instance.ShowInfo($"Adding {_allEPs.Count} EPs to queue...");
+            
+            int addedCount = 0;
+            int skippedCount = 0;
+            int failedCount = 0;
+            
+            foreach (var ep in _allEPs)
             {
-                LoggingService.Instance.LogInfo($"Starting bulk download of {_allEPs.Count} EPs");
-                NotificationService.Instance.ShowInfo($"Adding {_allEPs.Count} EPs to queue...");
-                
-                foreach (var ep in _allEPs)
+                try
                 {
                     await _service.DownloadAlbumAsync(ep.Id);
+                    addedCount++;
                 }
-                
-                NotificationService.Instance.ShowSuccess($"Added {_allEPs.Count} EPs to queue");
-                
-                // Trigger queue refresh
+                catch (Exception ex)
+                {
+                    if (ex.Message.Contains("already in queue", StringComparison.OrdinalIgnoreCase))
+                    {
+                        LoggingService.Instance.LogInfo($"EP '{ep.Title}' already in queue, skipping");
+                        skippedCount++;
+                    }
+                    else
+                    {
+                        LoggingService.Instance.LogError($"Failed to add EP '{ep.Title}' to queue", ex);
+                        failedCount++;
+                    }
+                }
+            }
+            
+            // Show summary notification
+            if (addedCount > 0)
+            {
+                NotificationService.Instance.ShowSuccess($"Added {addedCount} EP(s) to queue" + 
+                    (skippedCount > 0 ? $" ({skippedCount} already in queue)" : ""));
+            }
+            else if (skippedCount > 0)
+            {
+                NotificationService.Instance.ShowWarning($"All {skippedCount} EP(s) already in queue");
+            }
+            
+            if (failedCount > 0)
+            {
+                NotificationService.Instance.ShowError($"Failed to add {failedCount} EP(s)");
+            }
+            
+            // Trigger queue refresh if any were added
+            if (addedCount > 0)
+            {
                 await Task.Delay(500);
                 QueueRefreshRequested?.Invoke(this, EventArgs.Empty);
-            }
-            catch (Exception ex)
-            {
-                LoggingService.Instance.LogError("Failed to download all EPs", ex);
-                NotificationService.Instance.ShowError("Failed to download all EPs");
             }
         }
 

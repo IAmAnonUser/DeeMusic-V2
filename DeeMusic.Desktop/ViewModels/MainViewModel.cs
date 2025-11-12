@@ -17,6 +17,7 @@ namespace DeeMusic.Desktop.ViewModels
         private object? _currentView;
         private string _currentPage = "Search";
         private bool _isInitialized;
+        private readonly System.Collections.Generic.Stack<object> _navigationStack = new();
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -139,6 +140,8 @@ namespace DeeMusic.Desktop.ViewModels
             SearchViewModel.QueueRefreshRequested += OnQueueRefreshRequested;
             SearchViewModel.NavigateToAlbumRequested += OnNavigateToAlbumRequested;
             SearchViewModel.NavigateToArtistRequested += OnNavigateToArtistRequested;
+            SearchViewModel.NavigateToPlaylistRequested += OnNavigateToPlaylistRequested;
+            SettingsViewModel.SettingsSaved += OnSettingsSaved;
 
             // Initialize commands
             NavigateCommand = new RelayCommand<string>(NavigateTo);
@@ -170,6 +173,9 @@ namespace DeeMusic.Desktop.ViewModels
                 return;
 
             CurrentPage = pageName;
+
+            // Clear navigation stack when navigating to main pages
+            _navigationStack.Clear();
 
             CurrentView = pageName switch
             {
@@ -211,6 +217,14 @@ namespace DeeMusic.Desktop.ViewModels
         }
         
         /// <summary>
+        /// Handle settings saved event - reconfigure services
+        /// </summary>
+        private void OnSettingsSaved(object? sender, EventArgs e)
+        {
+            ConfigureSpotifyService();
+        }
+        
+        /// <summary>
         /// Handle queue refresh requested from child ViewModels
         /// </summary>
         private async void OnQueueRefreshRequested(object? sender, EventArgs e)
@@ -230,6 +244,12 @@ namespace DeeMusic.Desktop.ViewModels
                 return;
                 
             LoggingService.Instance.LogInfo($"Navigating to album detail: {album.Title}");
+            
+            // Push current view to navigation stack
+            if (CurrentView != null)
+            {
+                _navigationStack.Push(CurrentView);
+            }
             
             // Create AlbumDetailViewModel and set as current view
             var albumDetailViewModel = new AlbumDetailViewModel(_service, album);
@@ -252,6 +272,12 @@ namespace DeeMusic.Desktop.ViewModels
                 
             LoggingService.Instance.LogInfo($"Navigating to artist detail: {artist.Name}");
             
+            // Push current view to navigation stack
+            if (CurrentView != null)
+            {
+                _navigationStack.Push(CurrentView);
+            }
+            
             // Create ArtistDetailViewModel and set as current view
             var artistDetailViewModel = new ArtistDetailViewModel(_service, artist);
             
@@ -264,12 +290,52 @@ namespace DeeMusic.Desktop.ViewModels
         }
         
         /// <summary>
+        /// Handle navigation to playlist detail requested
+        /// </summary>
+        private void OnNavigateToPlaylistRequested(object? sender, Models.Playlist playlist)
+        {
+            if (playlist == null)
+                return;
+                
+            LoggingService.Instance.LogInfo($"Navigating to playlist detail: {playlist.Title}");
+            
+            // Push current view to navigation stack
+            if (CurrentView != null)
+            {
+                _navigationStack.Push(CurrentView);
+            }
+            
+            // Create PlaylistDetailViewModel and set as current view
+            var playlistDetailViewModel = new PlaylistDetailViewModel(_service, playlist);
+            
+            // Subscribe to navigation events from playlist detail
+            playlistDetailViewModel.NavigateToArtistRequested += OnNavigateToArtistRequested;
+            playlistDetailViewModel.BackRequested += OnBackFromDetailRequested;
+            playlistDetailViewModel.QueueRefreshRequested += OnQueueRefreshRequested;
+            
+            CurrentView = playlistDetailViewModel;
+        }
+        
+        /// <summary>
         /// Handle back navigation from detail views
         /// </summary>
         private void OnBackFromDetailRequested(object? sender, EventArgs e)
         {
-            LoggingService.Instance.LogInfo("Navigating back to search");
-            CurrentView = SearchViewModel;
+            LoggingService.Instance.LogInfo("Navigating back");
+            
+            // Pop from navigation stack if available
+            if (_navigationStack.Count > 0)
+            {
+                var previousView = _navigationStack.Pop();
+                CurrentView = previousView;
+                LoggingService.Instance.LogInfo($"Navigated back to: {previousView.GetType().Name}");
+            }
+            else
+            {
+                // Default to search view if stack is empty
+                LoggingService.Instance.LogInfo("Navigation stack empty, returning to search");
+                CurrentView = SearchViewModel;
+            }
         }
 
         #endregion
@@ -333,6 +399,9 @@ namespace DeeMusic.Desktop.ViewModels
                 await SearchViewModel.InitializeAsync();
                 await SettingsViewModel.LoadSettingsAsync();
                 
+                // Configure Spotify service with credentials from settings
+                ConfigureSpotifyService();
+                
                 // Load queue in background (don't block initialization)
                 _ = QueueViewModel.LoadQueueAsync();
             }
@@ -378,6 +447,28 @@ namespace DeeMusic.Desktop.ViewModels
             }
 
             return System.IO.Path.Combine(configDir, "settings.json");
+        }
+        
+        /// <summary>
+        /// Configure Spotify service with credentials from settings
+        /// </summary>
+        private void ConfigureSpotifyService()
+        {
+            try
+            {
+                var clientId = SettingsViewModel.SpotifyClientId;
+                var clientSecret = SettingsViewModel.SpotifyClientSecret;
+                
+                if (!string.IsNullOrEmpty(clientId) && !string.IsNullOrEmpty(clientSecret))
+                {
+                    SearchViewModel.ConfigureSpotify(clientId, clientSecret);
+                    LoggingService.Instance.LogInfo("Spotify service configured");
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Instance.LogWarning($"Failed to configure Spotify service: {ex.Message}");
+            }
         }
 
         #endregion

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	
+	"github.com/deemusic/deemusic-go/internal/store"
 )
 
 // JobType represents the type of download job
@@ -18,14 +20,17 @@ const (
 
 // Job represents a download job
 type Job struct {
-	ID         string
-	Type       JobType
-	TrackID    string
-	AlbumID    string
-	PlaylistID string
-	RetryCount int
-	ctx        context.Context
-	cancel     context.CancelFunc
+	ID           string
+	Type         JobType
+	TrackID      string
+	AlbumID      string
+	PlaylistID   string
+	RetryCount   int
+	ctx          context.Context
+	cancel       context.CancelFunc
+	QueueItem    *store.QueueItem
+	IsCustom     bool
+	CustomTracks []string
 }
 
 // Result represents the result of a job execution
@@ -58,14 +63,10 @@ func NewWorkerPool(maxWorkers int, handler JobHandler) *WorkerPool {
 		maxWorkers = 8 // Default to 8 workers
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-
 	return &WorkerPool{
 		maxWorkers: maxWorkers,
-		jobs:       make(chan *Job, maxWorkers*2), // Buffer for smoother operation
-		results:    make(chan *Result, maxWorkers*2),
-		ctx:        ctx,
-		cancel:     cancel,
+		jobs:       make(chan *Job, 10000), // Very large buffer to handle thousands of albums/tracks
+		results:    make(chan *Result, maxWorkers*10),
 		handler:    handler,
 		started:    false,
 	}
@@ -84,6 +85,9 @@ func (wp *WorkerPool) Start(ctx context.Context) error {
 		return fmt.Errorf("job handler not set")
 	}
 
+	// Use the provided context instead of creating a new one
+	wp.ctx, wp.cancel = context.WithCancel(ctx)
+
 	// Spawn worker goroutines
 	for i := 0; i < wp.maxWorkers; i++ {
 		wp.wg.Add(1)
@@ -97,16 +101,20 @@ func (wp *WorkerPool) Start(ctx context.Context) error {
 // worker is the main worker goroutine that processes jobs
 func (wp *WorkerPool) worker(id int) {
 	defer wp.wg.Done()
+	
+	fmt.Fprintf(os.Stderr, "[DEBUG] Worker %d started\n", id)
 
 	for {
 		select {
 		case <-wp.ctx.Done():
 			// Worker pool is shutting down
+			fmt.Fprintf(os.Stderr, "[WARN] Worker %d shutting down due to context cancellation: %v\n", id, wp.ctx.Err())
 			return
 
 		case job, ok := <-wp.jobs:
 			if !ok {
 				// Jobs channel closed
+				fmt.Fprintf(os.Stderr, "[WARN] Worker %d shutting down due to closed jobs channel\n", id)
 				return
 			}
 

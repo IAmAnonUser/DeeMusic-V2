@@ -138,7 +138,16 @@ namespace DeeMusic.Desktop.ViewModels
             catch (Exception ex)
             {
                 LoggingService.Instance.LogError($"Failed to download album {Album.Title}", ex);
-                NotificationService.Instance.ShowError($"Failed to download '{Album.Title}'");
+                
+                // Check if it's already in queue
+                if (ex.Message.Contains("already in queue", StringComparison.OrdinalIgnoreCase))
+                {
+                    NotificationService.Instance.ShowWarning($"'{Album.Title}' is already in the queue");
+                }
+                else
+                {
+                    NotificationService.Instance.ShowError($"Failed to download '{Album.Title}'");
+                }
             }
         }
 

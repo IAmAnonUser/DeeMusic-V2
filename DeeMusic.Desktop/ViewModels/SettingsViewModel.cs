@@ -25,6 +25,7 @@ namespace DeeMusic.Desktop.ViewModels
         private string? _validationError;
 
         public event PropertyChangedEventHandler? PropertyChanged;
+        public event EventHandler? SettingsSaved;
 
         #region Properties
 
@@ -126,6 +127,34 @@ namespace DeeMusic.Desktop.ViewModels
                     OnPropertyChanged();
                     MarkAsChanged();
                     System.Diagnostics.Debug.WriteLine($"HasUnsavedChanges: {HasUnsavedChanges}");
+                }
+            }
+        }
+
+        public string SpotifyClientId
+        {
+            get => Settings.Spotify.ClientId;
+            set
+            {
+                if (Settings.Spotify.ClientId != value)
+                {
+                    Settings.Spotify.ClientId = value;
+                    OnPropertyChanged();
+                    MarkAsChanged();
+                }
+            }
+        }
+
+        public string SpotifyClientSecret
+        {
+            get => Settings.Spotify.ClientSecret;
+            set
+            {
+                if (Settings.Spotify.ClientSecret != value)
+                {
+                    Settings.Spotify.ClientSecret = value;
+                    OnPropertyChanged();
+                    MarkAsChanged();
                 }
             }
         }
@@ -346,6 +375,11 @@ namespace DeeMusic.Desktop.ViewModels
         /// Command to clear image cache
         /// </summary>
         public ICommand ClearImageCacheCommand { get; }
+        
+        /// <summary>
+        /// Command to test Spotify connection
+        /// </summary>
+        public ICommand TestSpotifyConnectionCommand { get; }
 
         #endregion
 
@@ -359,6 +393,7 @@ namespace DeeMusic.Desktop.ViewModels
             BrowseFolderCommand = new RelayCommand(BrowseForFolder);
             OpenDownloadFolderCommand = new RelayCommand(OpenDownloadFolder);
             ClearImageCacheCommand = new RelayCommand(ClearImageCache);
+            TestSpotifyConnectionCommand = new AsyncRelayCommand(TestSpotifyConnectionAsync);
         }
 
         #region Settings Operations
@@ -532,6 +567,9 @@ namespace DeeMusic.Desktop.ViewModels
                 
                 // Update Windows startup if needed
                 UpdateWindowsStartup();
+                
+                // Notify that settings were saved
+                SettingsSaved?.Invoke(this, EventArgs.Empty);
                 
                 System.Diagnostics.Debug.WriteLine("Settings saved successfully");
             }
@@ -781,6 +819,56 @@ namespace DeeMusic.Desktop.ViewModels
                     "Error",
                     System.Windows.MessageBoxButton.OK,
                     System.Windows.MessageBoxImage.Error);
+            }
+        }
+        
+        /// <summary>
+        /// Test Spotify API connection
+        /// </summary>
+        private async Task TestSpotifyConnectionAsync()
+        {
+            if (string.IsNullOrWhiteSpace(SpotifyClientId) || string.IsNullOrWhiteSpace(SpotifyClientSecret))
+            {
+                NotificationService.Instance.ShowWarning("Please enter both Client ID and Client Secret");
+                return;
+            }
+
+            try
+            {
+                LoggingService.Instance.LogInfo("Testing Spotify connection...");
+                NotificationService.Instance.ShowInfo("Testing Spotify connection...");
+                
+                // Create a temporary Spotify service to test
+                var spotifyService = new SpotifyService(_service);
+                spotifyService.Configure(SpotifyClientId, SpotifyClientSecret);
+                
+                // Try to get an access token (this will authenticate)
+                await Task.Run(async () =>
+                {
+                    // Use reflection to call the private GetAccessTokenAsync method
+                    var method = spotifyService.GetType().GetMethod("GetAccessTokenAsync", 
+                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    if (method != null)
+                    {
+                        await (Task<string>)method.Invoke(spotifyService, null)!;
+                    }
+                });
+                
+                LoggingService.Instance.LogInfo("Spotify connection successful");
+                NotificationService.Instance.ShowSuccess("✓ Connected to Spotify successfully!");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Instance.LogError("Spotify connection test failed", ex);
+                
+                if (ex.Message.Contains("401") || ex.Message.Contains("Unauthorized"))
+                {
+                    NotificationService.Instance.ShowError("Invalid Client ID or Client Secret");
+                }
+                else
+                {
+                    NotificationService.Instance.ShowError($"Connection failed: {ex.Message}");
+                }
             }
         }
 
