@@ -1,6 +1,6 @@
 # DeeMusic V2
 
-A modern, high-performance music downloader for Deezer with Spotify playlist import support. Built with C# (WPF) frontend and Go backend for optimal performance.
+A modern, high-performance music downloader for D**zer with sp*tify playlist import support. Built with C# (WPF) frontend and Go backend for optimal performance.
 
 ![DeeMusic V2](https://img.shields.io/badge/version-2.0.0-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)
@@ -9,17 +9,17 @@ A modern, high-performance music downloader for Deezer with Spotify playlist imp
 ## ✨ Features
 
 ### Core Functionality
-- 🎵 **Download Music from Deezer**
+- 🎵 **Download Music from D**zer**
   - Individual tracks
   - Full albums with proper metadata
   - Playlists
   - High-quality audio (MP3 320kbps or FLAC)
 
-- 🎧 **Spotify Integration**
-  - Import Spotify playlists directly
-  - Automatic track matching on Deezer
+- 🎧 **sp*tify Integration**
+  - Import sp*tify playlists directly
+  - Automatic track matching on D**zer
   - Preserves playlist structure and metadata
-  - Download Spotify playlists as Deezer tracks
+  - Download sp*tify playlists as D**zer tracks
 
 ### Advanced Features
 - ⚡ **High-Performance Downloads**
@@ -46,7 +46,7 @@ A modern, high-performance music downloader for Deezer with Spotify playlist imp
   - Filename templates
   - Quality settings
   - Concurrent download limits
-  - Spotify API integration
+  - sp*tify API integration
 
 ### Metadata & Tagging
 - 📝 **Complete ID3 Tags**
@@ -63,8 +63,8 @@ A modern, high-performance music downloader for Deezer with Spotify playlist imp
 ### Prerequisites
 - Windows 10/11
 - .NET 8.0 Runtime
-- Deezer Premium account (ARL token required)
-- (Optional) Spotify API credentials for playlist import
+- D**zer Premium account (ARL token required)
+- (Optional) sp*tify API credentials for playlist import
 
 ### Installation
 
@@ -75,24 +75,24 @@ A modern, high-performance music downloader for Deezer with Spotify playlist imp
 3. **Run `DeeMusic.Desktop.exe`**
 
 4. **Configure on first launch:**
-   - Enter your Deezer ARL token
+   - Enter your D**zer ARL token
    - Set your download directory
-   - (Optional) Add Spotify API credentials
+   - (Optional) Add sp*tify API credentials
 
-### Getting Your Deezer ARL Token
+### Getting Your D**zer ARL Token
 
-1. Log into [deezer.com](https://www.deezer.com) in your browser
+1. Log into [d**zer.com](https://www.d**zer.com) in your browser
 2. Open Developer Tools (F12)
-3. Go to **Application** → **Cookies** → `https://www.deezer.com`
+3. Go to **Application** → **Cookies** → `https://www.d**zer.com`
 4. Copy the value of the `arl` cookie (192 characters)
 5. Paste it into DeeMusic settings
 
-### Getting Spotify API Credentials (Optional)
+### Getting sp*tify API Credentials (Optional)
 
-1. Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
+1. Go to [sp*tify Developer Dashboard](https://developer.sp*tify.com/dashboard)
 2. Create a new app
 3. Copy the **Client ID** and **Client Secret**
-4. Add them in DeeMusic Settings → Spotify Integration
+4. Add them in DeeMusic Settings → sp*tify Integration
 
 ## 📖 Usage
 
@@ -103,8 +103,8 @@ A modern, high-performance music downloader for Deezer with Spotify playlist imp
 2. Filter by type (All, Tracks, Albums, Artists, Playlists)
 3. Click the download button on any result
 
-**Import Spotify Playlist:**
-1. Copy a Spotify playlist URL
+**Import sp*tify Playlist:**
+1. Copy a sp*tify playlist URL
 2. Paste it into the search box
 3. Press Enter
 4. Review matched tracks
@@ -146,7 +146,7 @@ A modern, high-performance music downloader for Deezer with Spotify playlist imp
 - **Frontend:** C# / WPF (.NET 8.0)
 - **Backend:** Go (compiled as C DLL)
 - **Database:** SQLite
-- **APIs:** Deezer API, Spotify Web API
+- **APIs:** D**zer API, sp*tify Web API
 
 ### Project Structure
 ```
@@ -157,7 +157,7 @@ DeeMusic-V2/
 │   ├── Services/              # Service layer
 │   └── Models/                # Data models
 ├── internal/                  # Go Backend
-│   ├── api/                   # API clients (Deezer, Spotify)
+│   ├── api/                   # API clients (D**zer, sp*tify)
 │   ├── download/              # Download manager
 │   ├── store/                 # Database layer
 │   └── config/                # Configuration
@@ -211,7 +211,7 @@ Or use the provided build script:
 ### Version 2.0.0 (Latest)
 
 **New Features:**
-- ✅ Spotify playlist import with automatic track matching
+- ✅ sp*tify playlist import with automatic track matching
 - ✅ Multi-disc album support with CD folder creation
 - ✅ High-resolution artwork download (up to 1500x1500)
 - ✅ Featured content on home page (New Releases, Top Albums, etc.)
@@ -228,16 +228,16 @@ Or use the provided build script:
 
 **Bug Fixes:**
 - ✅ Fixed playlist progress not reaching 100%
-- ✅ Fixed navigation issues after Spotify import
+- ✅ Fixed navigation issues after sp*tify import
 - ✅ Fixed multi-disc album detection
 - ✅ Fixed track retry logic causing progress drops
 - ✅ Fixed completed tracks being re-downloaded
 
 ## 🐛 Known Issues
 
-- Some Spotify tracks may not be available on Deezer
+- Some sp*tify tracks may not be available on D**zer
 - Very large playlists (500+ tracks) may take time to process
-- Deezer ARL tokens expire periodically and need to be refreshed
+- D**zer ARL tokens expire periodically and need to be refreshed
 
 ## 🤝 Contributing
 
@@ -251,7 +251,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## ⚠️ Disclaimer
 
-This tool is for educational purposes only. Users are responsible for complying with Deezer's Terms of Service and applicable copyright laws. The developers are not responsible for any misuse of this software.
+This tool is for educational purposes only. Users are responsible for complying with D**zer's Terms of Service and applicable copyright laws. The developers are not responsible for any misuse of this software.
 
 ## 📄 License
 
@@ -259,8 +259,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- Deezer for their music streaming service
-- Spotify for their Web API
+- D**zer for their music streaming service
+- sp*tify for their Web API
 - The Go and .NET communities for excellent tools and libraries
 
 ## 📧 Support
