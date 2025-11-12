@@ -108,3 +108,8 @@ go.sum
 .kiro/
 scripts/
 docs/
+
+# GitHub helper scripts
+push-to-github.bat
+push-to-github.ps1
+setup-github-auth.ps1
