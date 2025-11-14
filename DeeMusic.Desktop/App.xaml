@@ -6,12 +6,13 @@
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <!-- Material Design -->
-                <materialDesign:BundledTheme BaseTheme="Light" PrimaryColor="Indigo" SecondaryColor="Purple" />
+                <!-- Material Design - BaseTheme will be set dynamically by ThemeManager -->
+                <materialDesign:BundledTheme BaseTheme="Dark" PrimaryColor="Indigo" SecondaryColor="Purple" />
                 <ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.Defaults.xaml" />
                 
-                <!-- Theme (will be dynamically loaded) -->
-                <ResourceDictionary Source="Resources/Styles/LightTheme.xaml" />
+                <!-- Theme will be dynamically loaded by ThemeManager.Initialize() in App.xaml.cs -->
+                <!-- Default to dark theme, will be replaced on startup -->
+                <ResourceDictionary Source="Resources/Styles/DarkTheme.xaml" />
                 
                 <!-- Custom Styles -->
                 <ResourceDictionary Source="Resources/Styles/Buttons.xaml" />

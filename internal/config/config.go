@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/deemusic/deemusic-go/internal/security"
 	"github.com/spf13/viper"
 )
 
@@ -148,20 +147,8 @@ func Load(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
-	// Decrypt ARL token if present
-	if cfg.Deezer.ARL != "" {
-		encryptor := security.NewTokenEncryptor(GetDataDir())
-		decryptedARL, err := encryptor.DecryptToken(cfg.Deezer.ARL)
-		if err != nil {
-			// If decryption fails, assume it's a plain token (for backward compatibility)
-			// Keep the plain token for runtime use - it will be encrypted on next save
-			// DO NOT save here as it would overwrite the file with incomplete data
-			fmt.Fprintf(os.Stderr, "[INFO] ARL token is not encrypted, will encrypt on next save\n")
-		} else {
-			// Store decrypted token for runtime use
-			cfg.Deezer.ARL = decryptedARL
-		}
-	}
+	// No encryption/decryption needed - ARL is stored in plain text
+	// The settings file is already in the user's AppData folder with appropriate permissions
 
 	// Validate config
 	if err := cfg.Validate(); err != nil {
@@ -258,27 +245,14 @@ func (c *Config) Save(path string) error {
 	v.SetConfigFile(path)
 	v.SetConfigType("json")
 
-	// Create a copy of config for saving
-	saveCfg := *c
-
-	// Encrypt ARL token before saving
-	if saveCfg.Deezer.ARL != "" {
-		encryptor := security.NewTokenEncryptor(GetDataDir())
-		encryptedARL, err := encryptor.EncryptToken(saveCfg.Deezer.ARL)
-		if err != nil {
-			return fmt.Errorf("failed to encrypt ARL token: %w", err)
-		}
-		saveCfg.Deezer.ARL = encryptedARL
-	}
-
-	// Set all values
-	v.Set("deezer", saveCfg.Deezer)
-	v.Set("download", saveCfg.Download)
-	v.Set("spotify", saveCfg.Spotify)
-	v.Set("lyrics", saveCfg.Lyrics)
-	v.Set("network", saveCfg.Network)
-	v.Set("system", saveCfg.System)
-	v.Set("logging", saveCfg.Logging)
+	// Set all values directly without encryption
+	v.Set("deezer", c.Deezer)
+	v.Set("download", c.Download)
+	v.Set("spotify", c.Spotify)
+	v.Set("lyrics", c.Lyrics)
+	v.Set("network", c.Network)
+	v.Set("system", c.System)
+	v.Set("logging", c.Logging)
 
 	return v.WriteConfig()
 }

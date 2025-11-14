@@ -7,13 +7,12 @@
         xmlns:viewmodels="clr-namespace:DeeMusic.Desktop.ViewModels"
         xmlns:views="clr-namespace:DeeMusic.Desktop.Views"
         mc:Ignorable="d"
-        Title="DeeMusic v2.8.1 - Aggressive WAL Checkpoint" 
+        Title="DeeMusic v2.0.2" 
         Height="900" 
         Width="1280"
         MinHeight="700"
         MinWidth="1000"
         WindowStartupLocation="CenterScreen"
-        WindowState="Maximized"
         Background="{DynamicResource MaterialDesignPaper}"
         TextElement.Foreground="{DynamicResource MaterialDesignBody}"
         TextElement.FontWeight="Regular"
@@ -281,11 +280,9 @@
                                 <StackPanel Grid.Row="0" Margin="0,0,0,8">
                                     <TextBlock FontSize="12" Opacity="0.7">
                                         <Run Text="Total: "/>
-                                        <Run Text="{Binding QueueViewModel.QueueStats.TotalItems, Mode=OneWay}" FontWeight="SemiBold"/>
+                                        <Run Text="{Binding QueueViewModel.TotalTracksInQueue, Mode=OneWay}" FontWeight="SemiBold"/>
                                         <Run Text=" | Completed: "/>
-                                        <Run Text="{Binding QueueViewModel.QueueStats.CompletedItems, Mode=OneWay}" FontWeight="SemiBold"/>
-                                        <Run Text=" | In Progress: "/>
-                                        <Run Text="{Binding QueueViewModel.QueueStats.InProgressItems, Mode=OneWay}" FontWeight="SemiBold"/>
+                                        <Run Text="{Binding QueueViewModel.CompletedTracksInQueue, Mode=OneWay}" FontWeight="SemiBold"/>
                                     </TextBlock>
                                 </StackPanel>
                                 
@@ -298,10 +295,19 @@
                                             <DataTemplate>
                                                 <Border Margin="0,0,0,8"
                                                        Padding="8"
-                                                       Background="{DynamicResource MaterialDesignCardBackground}"
                                                        BorderBrush="{DynamicResource MaterialDesignDivider}"
                                                        BorderThickness="1"
                                                        CornerRadius="4">
+                                                    <Border.Style>
+                                                        <Style TargetType="Border">
+                                                            <Setter Property="Background" Value="{DynamicResource MaterialDesignCardBackground}"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsCompleted}" Value="True">
+                                                                    <Setter Property="Background" Value="#E8F5E9"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
                                                     <Grid>
                                                         <Grid.RowDefinitions>
                                                             <RowDefinition Height="Auto"/>
@@ -321,7 +327,16 @@
                                                                   FontSize="11"
                                                                   Opacity="0.7"
                                                                   TextTrimming="CharacterEllipsis"
-                                                                  Margin="0,2,0,4"/>
+                                                                  Margin="0,2,0,0"/>
+                                                        
+                                                        <!-- Track Progress for Albums/Playlists -->
+                                                        <TextBlock Grid.Row="1"
+                                                                  Text="{Binding TrackProgressText}"
+                                                                  FontSize="10"
+                                                                  Foreground="#3B82F6"
+                                                                  FontWeight="Medium"
+                                                                  Margin="0,14,0,4"
+                                                                  Visibility="{Binding IsAlbumOrPlaylist, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                                                         
                                                         <!-- Progress Bar -->
                                                         <ProgressBar Grid.Row="2"

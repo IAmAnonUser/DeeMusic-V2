@@ -278,12 +278,18 @@ namespace DeeMusic.Desktop.ViewModels
             {
                 if (Settings.System.Theme != value)
                 {
+                    LoggingService.Instance.LogInfo($"Theme property setter: changing from '{Settings.System.Theme}' to '{value}'");
                     Settings.System.Theme = value;
+                    LoggingService.Instance.LogInfo($"Theme property setter: Settings.System.Theme is now '{Settings.System.Theme}'");
                     OnPropertyChanged();
                     MarkAsChanged();
                     
                     // Apply theme immediately
                     ThemeManager.Instance.ApplyTheme(value, animate: true);
+                }
+                else
+                {
+                    LoggingService.Instance.LogInfo($"Theme property setter: value '{value}' is same as current '{Settings.System.Theme}', skipping");
                 }
             }
         }
@@ -556,12 +562,11 @@ namespace DeeMusic.Desktop.ViewModels
             {
                 LoggingService.Instance.LogInfo("SaveSettingsAsync - saving to file");
                 
-                // Save settings locally first
+                // Save settings locally to file
+                // DO NOT update backend - the backend encrypts the ARL and will cause issues
+                // The backend will load the new settings from file on next initialization
                 await SaveSettingsToFileAsync();
-                
-                // Don't update backend - it will overwrite our changes with stale cached data
-                // The backend will load the new settings from the file when needed
-                LoggingService.Instance.LogInfo("Skipping backend update to prevent overwriting");
+                LoggingService.Instance.LogInfo("Settings saved to file successfully");
                 
                 HasUnsavedChanges = false;
                 
@@ -595,13 +600,11 @@ namespace DeeMusic.Desktop.ViewModels
                 LoggingService.Instance.LogInfo($"ForceSaveAsync - ARL: {Settings.Deezer.ARL.Substring(0, Math.Min(20, Settings.Deezer.ARL.Length))}...");
                 
                 // Save to file
+                // DO NOT update backend - the backend encrypts the ARL and will cause issues
+                // The backend will load the new settings from file on next initialization
                 LoggingService.Instance.LogInfo("Calling SaveSettingsToFileAsync...");
                 await SaveSettingsToFileAsync();
-                LoggingService.Instance.LogInfo("SaveSettingsToFileAsync completed");
-                
-                // Don't update backend here - it will overwrite our changes
-                // The backend will load the new settings from the file on next initialization
-                LoggingService.Instance.LogInfo("Skipping backend update to prevent overwriting");
+                LoggingService.Instance.LogInfo("SaveSettingsToFileAsync completed - settings saved to file");
             }
             catch (Exception ex)
             {
@@ -620,7 +623,14 @@ namespace DeeMusic.Desktop.ViewModels
             var settingsPath = System.IO.Path.Combine(deeMusicPath, "settings.json");
 
             LoggingService.Instance.LogInfo($"SaveSettingsToFileAsync - path: {settingsPath}");
-            LoggingService.Instance.LogInfo($"SaveSettingsToFileAsync - ARL: {Settings.Deezer.ARL.Substring(0, Math.Min(20, Settings.Deezer.ARL.Length))}...");
+            LoggingService.Instance.LogInfo($"SaveSettingsToFileAsync - ARL: {Settings.Deezer.ARL?.Substring(0, Math.Min(20, Settings.Deezer.ARL?.Length ?? 0))}...");
+
+            // Check if ARL is a placeholder value and warn user
+            if (Settings.Deezer.ARL == "CREDENTIAL_MANAGER" || Settings.Deezer.ARL == "your_arl_token_here")
+            {
+                LoggingService.Instance.LogWarning("ARL is set to a placeholder value. Please enter your actual Deezer ARL token.");
+                throw new InvalidOperationException("Please enter your actual Deezer ARL token in the Deezer tab before saving.");
+            }
 
             // Ensure directory exists
             if (!System.IO.Directory.Exists(deeMusicPath))
@@ -629,6 +639,9 @@ namespace DeeMusic.Desktop.ViewModels
                 LoggingService.Instance.LogInfo($"Created directory: {deeMusicPath}");
             }
 
+            // Log what we're about to save
+            LoggingService.Instance.LogInfo($"About to serialize Settings.System.Theme: '{Settings.System.Theme}'");
+            
             // Serialize and save
             var json = System.Text.Json.JsonSerializer.Serialize(Settings, new System.Text.Json.JsonSerializerOptions
             {
@@ -637,7 +650,10 @@ namespace DeeMusic.Desktop.ViewModels
             });
 
             LoggingService.Instance.LogInfo($"Serialized JSON length: {json.Length}");
-            LoggingService.Instance.LogInfo($"JSON ARL value: {System.Text.Json.JsonDocument.Parse(json).RootElement.GetProperty("deezer").GetProperty("arl").GetString()?.Substring(0, Math.Min(20, System.Text.Json.JsonDocument.Parse(json).RootElement.GetProperty("deezer").GetProperty("arl").GetString()?.Length ?? 0))}...");
+            var jsonDoc = System.Text.Json.JsonDocument.Parse(json);
+            var themeInJson = jsonDoc.RootElement.GetProperty("system").GetProperty("theme").GetString();
+            LoggingService.Instance.LogInfo($"Theme in serialized JSON: '{themeInJson}'");
+            LoggingService.Instance.LogInfo($"JSON ARL value: {jsonDoc.RootElement.GetProperty("deezer").GetProperty("arl").GetString()?.Substring(0, Math.Min(20, jsonDoc.RootElement.GetProperty("deezer").GetProperty("arl").GetString()?.Length ?? 0))}...");
             
             LoggingService.Instance.LogInfo($"About to write to file: {settingsPath}");
             await System.IO.File.WriteAllTextAsync(settingsPath, json);

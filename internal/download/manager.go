@@ -81,6 +81,32 @@ func (m *Manager) Start(ctx context.Context) error {
 		return fmt.Errorf("download manager already started")
 	}
 
+	// Reset any downloads that were interrupted (status='downloading' from previous session)
+	fmt.Fprintf(os.Stderr, "[INFO] Resetting interrupted downloads...\n")
+	if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		fmt.Fprintf(logFile, "[%s] Resetting interrupted downloads to pending status\n", time.Now().Format("2006-01-02 15:04:05"))
+		logFile.Close()
+	}
+	
+	// Get all items with status='downloading' and reset them to 'pending'
+	downloadingItems, err := m.queueStore.GetByStatus("downloading", 0, 1000)
+	if err == nil {
+		for _, item := range downloadingItems {
+			item.Status = "pending"
+			item.Progress = 0
+			if updateErr := m.queueStore.Update(item); updateErr != nil {
+				fmt.Fprintf(os.Stderr, "[WARN] Failed to reset item %s: %v\n", item.ID, updateErr)
+			} else {
+				fmt.Fprintf(os.Stderr, "[INFO] Reset interrupted download: %s\n", item.ID)
+				if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+					fmt.Fprintf(logFile, "[%s] Reset interrupted download: %s (%s)\n", time.Now().Format("2006-01-02 15:04:05"), item.ID, item.Title)
+					logFile.Close()
+				}
+			}
+		}
+		fmt.Fprintf(os.Stderr, "[INFO] Reset %d interrupted downloads\n", len(downloadingItems))
+	}
+
 	// Start worker pool
 	fmt.Fprintf(os.Stderr, "[DEBUG] Starting worker pool...\n")
 	if err := m.workerPool.Start(ctx); err != nil {

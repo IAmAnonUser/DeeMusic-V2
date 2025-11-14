@@ -167,6 +167,30 @@ namespace DeeMusic.Desktop.ViewModels
         /// Gets the queue statistics with proper property names
         /// </summary>
         public QueueStats Stats => QueueStats;
+        
+        /// <summary>
+        /// Gets the total number of albums/playlists in the queue
+        /// </summary>
+        public int TotalTracksInQueue
+        {
+            get
+            {
+                return QueueItems
+                    .Count(i => i.Type == "album" || i.Type == "playlist");
+            }
+        }
+        
+        /// <summary>
+        /// Gets the number of completed albums/playlists in the queue
+        /// </summary>
+        public int CompletedTracksInQueue
+        {
+            get
+            {
+                return QueueItems
+                    .Count(i => (i.Type == "album" || i.Type == "playlist") && i.Status == "completed");
+            }
+        }
 
         /// <summary>
         /// Gets the available status filters
@@ -419,7 +443,12 @@ namespace DeeMusic.Desktop.ViewModels
                                 {
                                     // Add new item at the end (oldest first)
                                     QueueItems.Add(newItem);
-                                    LoggingService.Instance.LogInfo($"Added queue item: ID={newItem.Id}, Title={newItem.Title}, TotalTracks={newItem.TotalTracks}");
+                                    LoggingService.Instance.LogInfo($"Added queue item: ID={newItem.Id}, Title={newItem.Title}, TotalTracks={newItem.TotalTracks}, CompletedTracks={newItem.CompletedTracks}");
+                                    
+                                    // Force property change notifications for UI binding
+                                    newItem.OnPropertyChanged(nameof(newItem.TrackProgressText));
+                                    newItem.OnPropertyChanged(nameof(newItem.IsAlbumOrPlaylist));
+                                    newItem.OnPropertyChanged(nameof(newItem.IsCompleted));
                                 }
                             }
                         });
@@ -433,6 +462,8 @@ namespace DeeMusic.Desktop.ViewModels
                     HasMoreItems = offset + response.Items?.Count < response.Total;
                     
                     OnPropertyChanged(nameof(IsQueueEmpty));
+                    OnPropertyChanged(nameof(TotalTracksInQueue));
+                    OnPropertyChanged(nameof(CompletedTracksInQueue));
                 }
                 else
                 {
@@ -727,18 +758,45 @@ namespace DeeMusic.Desktop.ViewModels
         /// </summary>
         private void OnProgressUpdated(object? sender, ProgressUpdateEventArgs e)
         {
-            // Find the queue item and update its progress
-            var item = QueueItems.FirstOrDefault(i => i.Id == e.ItemID);
-            if (item != null)
+            // Ensure UI updates happen on the UI thread
+            System.Windows.Application.Current?.Dispatcher.InvokeAsync(() =>
             {
+                // Find the queue item and update its progress
+                var item = QueueItems.FirstOrDefault(i => i.Id == e.ItemID);
+                if (item == null)
+                    return;
+
                 // Only update progress if it increased - backend sometimes sends stale/incorrect values
                 if (e.Progress > item.Progress)
                 {
                     item.Progress = e.Progress;
                 }
                 
-                item.BytesDownloaded = e.BytesProcessed;
-                item.TotalBytes = e.TotalBytes;
+                // For albums/playlists, BytesProcessed and TotalBytes represent track counts
+                if (item.Type == "album" || item.Type == "playlist")
+                {
+                    var oldCompleted = item.CompletedTracks;
+                    var oldTotal = item.TotalTracks;
+                    
+                    item.CompletedTracks = (int)e.BytesProcessed;
+                    item.TotalTracks = (int)e.TotalBytes;
+                    
+                    // Log track progress updates for albums/playlists
+                    if (oldCompleted != item.CompletedTracks || oldTotal != item.TotalTracks)
+                    {
+                        LoggingService.Instance.LogInfo($"Track progress update: {item.Title} - {item.CompletedTracks}/{item.TotalTracks} tracks ({item.Progress}%)");
+                        
+                        // Notify total track counts changed
+                        OnPropertyChanged(nameof(TotalTracksInQueue));
+                        OnPropertyChanged(nameof(CompletedTracksInQueue));
+                    }
+                }
+                else
+                {
+                    // For individual tracks, these are actual bytes
+                    item.BytesDownloaded = e.BytesProcessed;
+                    item.TotalBytes = e.TotalBytes;
+                }
                 
                 // Calculate download speed
                 if (e.TotalBytes > 0 && e.BytesProcessed > 0)
@@ -747,7 +805,7 @@ namespace DeeMusic.Desktop.ViewModels
                     // For now, just update the display
                     item.DownloadSpeed = FormatSpeed(e.BytesProcessed, e.TotalBytes);
                 }
-            }
+            });
         }
 
         /// <summary>
@@ -755,10 +813,14 @@ namespace DeeMusic.Desktop.ViewModels
         /// </summary>
         private void OnStatusChanged(object? sender, StatusUpdateEventArgs e)
         {
-            // Find the queue item and update its status
-            var item = QueueItems.FirstOrDefault(i => i.Id == e.ItemID);
-            if (item != null)
+            // Ensure UI updates happen on the UI thread
+            System.Windows.Application.Current?.Dispatcher.InvokeAsync(() =>
             {
+                // Find the queue item and update its status
+                var item = QueueItems.FirstOrDefault(i => i.Id == e.ItemID);
+                if (item == null)
+                    return;
+
                 var previousStatus = item.Status;
                 item.Status = e.Status;
                 
@@ -775,6 +837,10 @@ namespace DeeMusic.Desktop.ViewModels
                     
                     LoggingService.Instance.LogInfo($"Item completed: {item.Title}, Status={item.Status}, IsCompleted={item.IsCompleted}, Progress={item.Progress}%");
                     
+                    // Notify stats changed
+                    OnPropertyChanged(nameof(TotalTracksInQueue));
+                    OnPropertyChanged(nameof(CompletedTracksInQueue));
+                    
                     // Show tray notification for download completion
                     _trayService?.ShowDownloadCompleted(item.Title ?? "Track");
                 }
@@ -784,7 +850,7 @@ namespace DeeMusic.Desktop.ViewModels
                 {
                     _trayService?.ShowDownloadError(item.Title ?? "Track", e.ErrorMessage ?? "Unknown error");
                 }
-            }
+            });
         }
 
         /// <summary>

@@ -269,8 +269,11 @@ namespace DeeMusic.Desktop.ViewModels
         /// </summary>
         public bool ShowConfigurationNeeded { get; private set; }
 
-        private void CheckConfiguration()
+        private async void CheckConfiguration()
         {
+            // Add a small delay to ensure file is fully written
+            await Task.Delay(100);
+            
             // Check if ARL is configured
             var settingsPath = System.IO.Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -280,21 +283,72 @@ namespace DeeMusic.Desktop.ViewModels
             {
                 try
                 {
-                    var json = System.IO.File.ReadAllText(settingsPath);
+                    // Retry logic in case file is still being written
+                    string json = null;
+                    for (int i = 0; i < 3; i++)
+                    {
+                        try
+                        {
+                            json = System.IO.File.ReadAllText(settingsPath);
+                            break;
+                        }
+                        catch (System.IO.IOException)
+                        {
+                            if (i < 2)
+                            {
+                                await Task.Delay(100);
+                                continue;
+                            }
+                            throw;
+                        }
+                    }
+                    
+                    if (string.IsNullOrWhiteSpace(json))
+                    {
+                        LoggingService.Instance.LogError("Settings file is empty");
+                        ShowConfigurationNeeded = true;
+                        return;
+                    }
+                    
+                    LoggingService.Instance.LogInfo($"Settings JSON length: {json.Length}");
+                    
                     var settings = System.Text.Json.JsonSerializer.Deserialize<Models.Settings>(json, 
                         new System.Text.Json.JsonSerializerOptions 
                         { 
                             PropertyNameCaseInsensitive = true 
                         });
                     
-                    var arl = settings?.Deezer?.ARL;
+                    if (settings == null)
+                    {
+                        LoggingService.Instance.LogError("Settings deserialization returned null");
+                        ShowConfigurationNeeded = true;
+                        return;
+                    }
+                    
+                    if (settings.Deezer == null)
+                    {
+                        LoggingService.Instance.LogError("Settings.Deezer is null");
+                        ShowConfigurationNeeded = true;
+                        return;
+                    }
+                    
+                    var arl = settings.Deezer.ARL;
+                    LoggingService.Instance.LogInfo($"ARL value: IsNull={arl == null}, IsEmpty={string.IsNullOrEmpty(arl)}, Length={arl?.Length ?? 0}");
+                    
                     // Check if ARL is empty, null, or a placeholder value
                     ShowConfigurationNeeded = string.IsNullOrWhiteSpace(arl) || 
                                              arl == "CREDENTIAL_MANAGER" ||
                                              arl == "your_arl_token_here" ||
                                              arl.Length < 100; // Real ARL tokens are typically 192 characters
                     
-                    LoggingService.Instance.LogInfo($"Configuration check: ARL configured = {!ShowConfigurationNeeded}, ARL length = {arl?.Length ?? 0}");
+                    if (!ShowConfigurationNeeded && arl != null)
+                    {
+                        LoggingService.Instance.LogInfo($"Configuration check: ARL configured = TRUE, ARL length = {arl.Length}, ARL preview = {arl.Substring(0, Math.Min(20, arl.Length))}...");
+                    }
+                    else
+                    {
+                        LoggingService.Instance.LogWarning($"Configuration check: ARL NOT configured properly");
+                    }
                 }
                 catch (Exception ex)
                 {

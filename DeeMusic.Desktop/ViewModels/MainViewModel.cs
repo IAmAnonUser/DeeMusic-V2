@@ -352,17 +352,19 @@ namespace DeeMusic.Desktop.ViewModels
                 // Toggle theme
                 var newTheme = ThemeManager.Instance.ToggleTheme(animate: true);
                 
-                // Update settings
+                LoggingService.Instance.LogInfo($"Theme toggled to: {newTheme}");
+                
+                // Update settings - this will mark as changed
                 SettingsViewModel.Theme = newTheme;
                 
                 // Save settings to persist theme preference
-                if (SettingsViewModel.SaveCommand is ICommand saveCommand && saveCommand.CanExecute(null))
-                {
-                    await System.Threading.Tasks.Task.Run(() => saveCommand.Execute(null));
-                }
+                await SettingsViewModel.ForceSaveAsync();
+                
+                LoggingService.Instance.LogInfo("Theme preference saved");
             }
             catch (Exception ex)
             {
+                LoggingService.Instance.LogError("Error toggling theme", ex);
                 System.Diagnostics.Debug.WriteLine($"Error toggling theme: {ex.Message}");
             }
         }

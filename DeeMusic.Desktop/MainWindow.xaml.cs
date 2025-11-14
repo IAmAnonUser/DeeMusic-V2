@@ -1,10 +1,12 @@
 using System;
 using System.ComponentModel;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using DeeMusic.Desktop.Models;
 using DeeMusic.Desktop.Services;
@@ -24,6 +26,33 @@ namespace DeeMusic.Desktop
         // The service MUST live for the entire application lifetime
         private static DeeMusicService? _staticService;
         private readonly DeeMusicService _service;
+
+        // P/Invoke for proper maximize behavior
+        [DllImport("user32.dll")]
+        private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
+
+        private const uint MONITOR_DEFAULTTONEAREST = 2;
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RECT
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct MONITORINFO
+        {
+            public uint Size;
+            public RECT Monitor;
+            public RECT WorkArea;
+            public uint Flags;
+        }
 
         public MainWindow()
         {
@@ -60,6 +89,15 @@ namespace DeeMusic.Desktop
                 
                 // Check if initial setup is needed
                 Loaded += MainWindow_Loaded;
+                
+                // Maximize window on startup (respecting taskbar)
+                Loaded += (s, e) =>
+                {
+                    MaximizeToWorkArea();
+                };
+                
+                // Prevent actual WindowState.Maximized from covering taskbar
+                StateChanged += MainWindow_StateChanged;
             }
             catch (Exception ex)
             {
@@ -156,12 +194,12 @@ namespace DeeMusic.Desktop
             if (mainViewModel?.SettingsViewModel == null)
                 return;
 
-            // Create a simple input dialog for ARL
+            // Create welcome setup dialog
             var inputDialog = new Window
             {
                 Title = "Welcome to DeeMusic - Initial Setup",
-                Width = 600,
-                Height = 400,
+                Width = 650,
+                Height = 550,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
                 Owner = this,
                 Background = Background,
@@ -170,15 +208,17 @@ namespace DeeMusic.Desktop
             };
 
             var grid = new Grid { Margin = new Thickness(20) };
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Welcome text
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // ARL label
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // ARL textbox
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Download path label
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Download path + browse
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // Instructions
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Buttons
 
             var welcomeText = new TextBlock
             {
-                Text = "Welcome to DeeMusic!\n\nTo get started, please enter your Deezer ARL token:",
+                Text = "Welcome to DeeMusic!\n\nPlease configure the required settings to get started:",
                 TextWrapping = TextWrapping.Wrap,
                 FontSize = 14,
                 Margin = new Thickness(0, 0, 0, 20)
@@ -187,7 +227,7 @@ namespace DeeMusic.Desktop
 
             var arlLabel = new TextBlock
             {
-                Text = "Deezer ARL Token:",
+                Text = "Deezer ARL Token (Required):",
                 FontWeight = FontWeights.SemiBold,
                 Margin = new Thickness(0, 0, 0, 8)
             };
@@ -201,41 +241,146 @@ namespace DeeMusic.Desktop
             };
             Grid.SetRow(arlTextBox, 2);
 
+            var downloadPathLabel = new TextBlock
+            {
+                Text = "Download Directory:",
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 0, 8)
+            };
+            Grid.SetRow(downloadPathLabel, 3);
+
+            var downloadPathGrid = new Grid { Margin = new Thickness(0, 0, 0, 16) };
+            downloadPathGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            downloadPathGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            
+            var defaultDownloadPath = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.MyMusic),
+                "DeeMusic");
+            
+            var downloadPathTextBox = new TextBox
+            {
+                Text = defaultDownloadPath,
+                Padding = new Thickness(8),
+                FontSize = 13,
+                IsReadOnly = true
+            };
+            Grid.SetColumn(downloadPathTextBox, 0);
+
+            var browseButton = new Button
+            {
+                Content = "Browse",
+                Padding = new Thickness(15, 8, 15, 8),
+                Margin = new Thickness(8, 0, 0, 0),
+                FontSize = 13
+            };
+            Grid.SetColumn(browseButton, 1);
+            
+            browseButton.Click += (s, e) =>
+            {
+                var dialog = new System.Windows.Forms.FolderBrowserDialog
+                {
+                    Description = "Select download directory",
+                    SelectedPath = downloadPathTextBox.Text,
+                    ShowNewFolderButton = true
+                };
+                
+                if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+                {
+                    downloadPathTextBox.Text = dialog.SelectedPath;
+                }
+            };
+
+            downloadPathGrid.Children.Add(downloadPathTextBox);
+            downloadPathGrid.Children.Add(browseButton);
+            Grid.SetRow(downloadPathGrid, 4);
+
             var instructionsText = new TextBlock
             {
                 Text = "How to find your ARL token:\n" +
                        "1. Log into deezer.com in your browser\n" +
                        "2. Open Developer Tools (F12)\n" +
                        "3. Go to Application → Cookies\n" +
-                       "4. Copy the 'arl' cookie value",
+                       "4. Copy the 'arl' cookie value\n\n" +
+                       "You can change other settings later from the Settings menu.",
                 TextWrapping = TextWrapping.Wrap,
                 FontSize = 12,
                 Foreground = Brushes.Gray,
                 Margin = new Thickness(0, 0, 0, 20)
             };
-            Grid.SetRow(instructionsText, 3);
+            Grid.SetRow(instructionsText, 5);
+
+            var buttonPanel = new StackPanel 
+            { 
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right
+            };
+            
+            var moreSettingsButton = new Button
+            {
+                Content = "More Settings",
+                Padding = new Thickness(20, 10, 20, 10),
+                FontSize = 14,
+                Margin = new Thickness(0, 0, 10, 0)
+            };
+            
+            var skipButton = new Button
+            {
+                Content = "Skip",
+                Padding = new Thickness(20, 10, 20, 10),
+                FontSize = 14,
+                Margin = new Thickness(0, 0, 10, 0)
+            };
 
             var saveButton = new Button
             {
                 Content = "Save and Continue",
                 Padding = new Thickness(20, 10, 20, 10),
-                FontSize = 14,
-                HorizontalAlignment = HorizontalAlignment.Right
+                FontSize = 14
             };
-            Grid.SetRow(saveButton, 4);
             
-            LoggingService.Instance.LogInfo("Save button created");
+            buttonPanel.Children.Add(moreSettingsButton);
+            buttonPanel.Children.Add(skipButton);
+            buttonPanel.Children.Add(saveButton);
+            Grid.SetRow(buttonPanel, 6);
+            
+            LoggingService.Instance.LogInfo("Welcome dialog buttons created");
 
             bool saved = false;
+            
+            // More Settings button - opens full settings dialog
+            moreSettingsButton.Click += (s, e) =>
+            {
+                inputDialog.Close();
+                SettingsButton_Click(this, new RoutedEventArgs());
+            };
+            
+            // Skip button - closes dialog without saving
+            skipButton.Click += (s, e) =>
+            {
+                var result = MessageBox.Show(
+                    "Are you sure you want to skip setup? You'll need to configure settings later to use DeeMusic.",
+                    "Skip Setup",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+                    
+                if (result == MessageBoxResult.Yes)
+                {
+                    inputDialog.Close();
+                }
+            };
+            
+            // Save button - saves ARL and download path
             saveButton.Click += async (s, e) =>
             {
                 try
                 {
                     LoggingService.Instance.LogInfo("=== Save button clicked ===");
-                    System.Diagnostics.Debug.WriteLine("=== Save button clicked ===");
                     
                     var arl = arlTextBox.Text.Trim();
+                    var downloadPath = downloadPathTextBox.Text.Trim();
+                    
                     LoggingService.Instance.LogInfo($"ARL entered, length: {arl.Length}");
+                    LoggingService.Instance.LogInfo($"Download path: {downloadPath}");
                     
                     if (string.IsNullOrWhiteSpace(arl))
                     {
@@ -249,22 +394,21 @@ namespace DeeMusic.Desktop
                         if (result == MessageBoxResult.No)
                             return;
                     }
+                    
+                    if (string.IsNullOrWhiteSpace(downloadPath))
+                    {
+                        MessageBox.Show("Please select a download directory.", "Required", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        return;
+                    }
 
-                    // Save the ARL directly
+                    // Save the ARL and download path
                     LoggingService.Instance.LogInfo($"Setting ARL property: {arl.Substring(0, Math.Min(20, arl.Length))}...");
                     mainViewModel.SettingsViewModel.DeezerARL = arl;
-                    LoggingService.Instance.LogInfo($"ARL property set, current value: {mainViewModel.SettingsViewModel.DeezerARL.Substring(0, Math.Min(20, mainViewModel.SettingsViewModel.DeezerARL.Length))}...");
-                    LoggingService.Instance.LogInfo($"HasUnsavedChanges: {mainViewModel.SettingsViewModel.HasUnsavedChanges}");
+                    mainViewModel.SettingsViewModel.DownloadPath = downloadPath;
                     
-                    // Ensure download path is set
-                    if (string.IsNullOrWhiteSpace(mainViewModel.SettingsViewModel.DownloadPath))
-                    {
-                        var defaultPath = System.IO.Path.Combine(
-                            Environment.GetFolderPath(Environment.SpecialFolder.MyMusic),
-                            "DeeMusic");
-                        mainViewModel.SettingsViewModel.DownloadPath = defaultPath;
-                        LoggingService.Instance.LogInfo($"Set default download path: {defaultPath}");
-                    }
+                    LoggingService.Instance.LogInfo($"ARL property set, current value: {mainViewModel.SettingsViewModel.DeezerARL.Substring(0, Math.Min(20, mainViewModel.SettingsViewModel.DeezerARL.Length))}...");
+                    LoggingService.Instance.LogInfo($"Download path set: {mainViewModel.SettingsViewModel.DownloadPath}");
+                    LoggingService.Instance.LogInfo($"HasUnsavedChanges: {mainViewModel.SettingsViewModel.HasUnsavedChanges}");
 
                     // Call the save method directly
                     LoggingService.Instance.LogInfo("Calling ForceSaveAsync...");
@@ -290,8 +434,10 @@ namespace DeeMusic.Desktop
             grid.Children.Add(welcomeText);
             grid.Children.Add(arlLabel);
             grid.Children.Add(arlTextBox);
+            grid.Children.Add(downloadPathLabel);
+            grid.Children.Add(downloadPathGrid);
             grid.Children.Add(instructionsText);
-            grid.Children.Add(saveButton);
+            grid.Children.Add(buttonPanel);
 
             inputDialog.Content = grid;
             
@@ -308,11 +454,63 @@ namespace DeeMusic.Desktop
             }
         }
 
+        /// <summary>
+        /// Maximize window to work area (respecting taskbar)
+        /// </summary>
+        private void MaximizeToWorkArea()
+        {
+            var hwnd = new WindowInteropHelper(this).Handle;
+            var monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+            
+            if (monitor != IntPtr.Zero)
+            {
+                var monitorInfo = new MONITORINFO { Size = (uint)Marshal.SizeOf(typeof(MONITORINFO)) };
+                if (GetMonitorInfo(monitor, ref monitorInfo))
+                {
+                    var workArea = monitorInfo.WorkArea;
+                    
+                    // Set window position and size to work area (excludes taskbar)
+                    Left = workArea.Left;
+                    Top = workArea.Top;
+                    Width = workArea.Right - workArea.Left;
+                    Height = workArea.Bottom - workArea.Top;
+                    
+                    WindowState = WindowState.Normal; // Keep as Normal but sized to work area
+                }
+            }
+        }
+
+        /// <summary>
+        /// Handle window state changes to prevent covering taskbar
+        /// </summary>
+        private void MainWindow_StateChanged(object? sender, EventArgs e)
+        {
+            // If someone tries to maximize the window, maximize to work area instead
+            if (WindowState == WindowState.Maximized)
+            {
+                WindowState = WindowState.Normal;
+                MaximizeToWorkArea();
+            }
+        }
+
         private void TopBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             if (e.ClickCount == 2)
             {
-                WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+                if (WindowState == WindowState.Normal && 
+                    Width == SystemParameters.WorkArea.Width && 
+                    Height == SystemParameters.WorkArea.Height)
+                {
+                    // Currently "maximized" to work area, restore to default size
+                    Width = 1280;
+                    Height = 900;
+                    WindowStartupLocation = WindowStartupLocation.CenterScreen;
+                }
+                else
+                {
+                    // Maximize to work area
+                    MaximizeToWorkArea();
+                }
             }
             else
             {
@@ -417,16 +615,16 @@ namespace DeeMusic.Desktop
             var settingsWindow = new Window
             {
                 Title = "Settings",
-                Width = 700,
-                Height = 750,
+                Width = 900,
+                Height = 900,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
                 Owner = this,
                 Content = new Views.SettingsView { DataContext = mainViewModel.SettingsViewModel },
                 Background = Background,
                 Foreground = Foreground,
                 ResizeMode = ResizeMode.CanResize,
-                MinWidth = 600,
-                MinHeight = 600
+                MinWidth = 850,
+                MinHeight = 800
             };
             settingsWindow.ShowDialog();
             
