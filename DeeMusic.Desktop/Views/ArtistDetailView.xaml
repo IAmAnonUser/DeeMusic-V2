@@ -374,7 +374,7 @@
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="200"/>
+                                        <ColumnDefinition Width="300"/>
                                         <ColumnDefinition Width="100"/>
                                         <ColumnDefinition Width="50"/>
                                     </Grid.ColumnDefinitions>
@@ -422,7 +422,7 @@
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="200"/>
+                                                <ColumnDefinition Width="300"/>
                                                 <ColumnDefinition Width="100"/>
                                                 <ColumnDefinition Width="50"/>
                                             </Grid.ColumnDefinitions>
@@ -437,12 +437,19 @@
                                             
                                             <!-- Album -->
                                             <TextBlock Grid.Column="1"
-                                                      Text="{Binding Album.Title}"
                                                       FontSize="14"
                                                       Foreground="{DynamicResource MaterialDesignBodyLight}"
                                                       VerticalAlignment="Center"
                                                       TextTrimming="CharacterEllipsis"
-                                                      Margin="16,0"/>
+                                                      Margin="16,0"
+                                                      Cursor="Hand">
+                                                <Hyperlink Command="{Binding DataContext.ViewAlbumCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                          CommandParameter="{Binding Album}"
+                                                          TextDecorations="None"
+                                                          Foreground="{DynamicResource MaterialDesignBodyLight}">
+                                                    <Run Text="{Binding Album.Title, Mode=OneWay}"/>
+                                                </Hyperlink>
+                                            </TextBlock>
                                             
                                             <!-- Duration -->
                                             <TextBlock Grid.Column="2"

@@ -238,7 +238,7 @@ namespace DeeMusic.Desktop.ViewModels
         /// <summary>
         /// Handle navigation to album detail requested
         /// </summary>
-        private void OnNavigateToAlbumRequested(object? sender, Models.Album album)
+        private async void OnNavigateToAlbumRequested(object? sender, Models.Album album)
         {
             if (album == null)
                 return;
@@ -252,7 +252,7 @@ namespace DeeMusic.Desktop.ViewModels
             }
             
             // Create AlbumDetailViewModel and set as current view
-            var albumDetailViewModel = new AlbumDetailViewModel(_service, album);
+            var albumDetailViewModel = new AlbumDetailViewModel(_service);
             
             // Subscribe to navigation events from album detail
             albumDetailViewModel.NavigateToArtistRequested += OnNavigateToArtistRequested;
@@ -260,6 +260,9 @@ namespace DeeMusic.Desktop.ViewModels
             albumDetailViewModel.QueueRefreshRequested += OnQueueRefreshRequested;
             
             CurrentView = albumDetailViewModel;
+            
+            // Load the full album details (including tracks)
+            await albumDetailViewModel.LoadAlbumAsync(album.Id);
         }
         
         /// <summary>

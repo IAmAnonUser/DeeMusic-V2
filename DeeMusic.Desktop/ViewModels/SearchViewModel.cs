@@ -43,6 +43,7 @@ namespace DeeMusic.Desktop.ViewModels
                 {
                     _searchQuery = value;
                     OnPropertyChanged();
+                    OnPropertyChanged(nameof(ShowSearchResults));
                     
                     // If user starts typing while in ViewAll mode, exit ViewAll and show search
                     // But preserve the search query they're typing
@@ -137,6 +138,7 @@ namespace DeeMusic.Desktop.ViewModels
                     OnPropertyChanged(nameof(IsLoading));
                     OnPropertyChanged(nameof(ShowWelcome));
                     OnPropertyChanged(nameof(ShowNoResults));
+                    OnPropertyChanged(nameof(ShowSearchResults));
                 }
             }
         }
@@ -374,10 +376,35 @@ namespace DeeMusic.Desktop.ViewModels
         public bool ShowNoResults => !IsSearching && !HasResults && !string.IsNullOrWhiteSpace(SearchQuery);
 
         /// <summary>
+        /// Gets whether to show search results UI (tabs and back button)
+        /// </summary>
+        public bool ShowSearchResults => !string.IsNullOrWhiteSpace(SearchQuery) && !IsSearching && !ShowConfigurationNeeded && !IsViewingAll;
+
+        /// <summary>
         /// Gets whether there are any search results
         /// </summary>
         public bool HasResults => TrackResults.Count > 0 || AlbumResults.Count > 0 || 
                                   ArtistResults.Count > 0 || PlaylistResults.Count > 0;
+
+        /// <summary>
+        /// Gets whether there are track results
+        /// </summary>
+        public bool HasTrackResults => TrackResults.Count > 0;
+
+        /// <summary>
+        /// Gets whether there are album results
+        /// </summary>
+        public bool HasAlbumResults => AlbumResults.Count > 0;
+
+        /// <summary>
+        /// Gets whether there are artist results
+        /// </summary>
+        public bool HasArtistResults => ArtistResults.Count > 0;
+
+        /// <summary>
+        /// Gets whether there are playlist results
+        /// </summary>
+        public bool HasPlaylistResults => PlaylistResults.Count > 0;
 
         /// <summary>
         /// Gets whether currently loading
@@ -865,6 +892,10 @@ namespace DeeMusic.Desktop.ViewModels
                 IsSearching = false;
                 OnPropertyChanged(nameof(ShowSections));
                 OnPropertyChanged(nameof(ShowFilteredResults));
+                OnPropertyChanged(nameof(ShowSearchResults));
+                
+                // Debug logging
+                LoggingService.Instance.LogInfo($"Search UI State: IsAllTabSelected={IsAllTabSelected}, HasResults={HasResults}, ShowSections={ShowSections}, ShowSearchResults={ShowSearchResults}, TrackResults={TrackResults.Count}, AlbumResults={AlbumResults.Count}, ArtistResults={ArtistResults.Count}, PlaylistResults={PlaylistResults.Count}");
             }
         }
 
@@ -890,6 +921,7 @@ namespace DeeMusic.Desktop.ViewModels
                 LoggingService.Instance.LogInfo($"SearchTracksAsync: TrackResults.Count = {TrackResults.Count}");
                 
                 OnPropertyChanged(nameof(HasResults));
+                OnPropertyChanged(nameof(HasTrackResults));
                 OnPropertyChanged(nameof(ShowWelcome));
                 OnPropertyChanged(nameof(ShowNoResults));
                 OnPropertyChanged(nameof(SearchResults));
@@ -916,6 +948,7 @@ namespace DeeMusic.Desktop.ViewModels
                 }
                 
                 OnPropertyChanged(nameof(HasResults));
+                OnPropertyChanged(nameof(HasAlbumResults));
                 OnPropertyChanged(nameof(ShowWelcome));
                 OnPropertyChanged(nameof(ShowNoResults));
                 OnPropertyChanged(nameof(SearchResults));
@@ -938,6 +971,7 @@ namespace DeeMusic.Desktop.ViewModels
                 }
                 
                 OnPropertyChanged(nameof(HasResults));
+                OnPropertyChanged(nameof(HasArtistResults));
                 OnPropertyChanged(nameof(ShowWelcome));
                 OnPropertyChanged(nameof(ShowNoResults));
                 OnPropertyChanged(nameof(SearchResults));
@@ -960,6 +994,7 @@ namespace DeeMusic.Desktop.ViewModels
                 }
                 
                 OnPropertyChanged(nameof(HasResults));
+                OnPropertyChanged(nameof(HasPlaylistResults));
                 OnPropertyChanged(nameof(ShowWelcome));
                 OnPropertyChanged(nameof(ShowNoResults));
                 OnPropertyChanged(nameof(SearchResults));

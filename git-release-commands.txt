@@ -1,0 +1,41 @@
+# Git Commands for v2.0.2 Release
+
+# 1. Stage all changes
+git add -A
+
+# 2. Commit with release message
+git commit -m "Release v2.0.2: Queue visual feedback, theme persistence, and UI improvements
+
+- Added track progress display in queue (completed/total tracks)
+- Added green completion indicators for finished albums
+- Fixed theme persistence across app restarts
+- Enhanced welcome dialog with download directory setup
+- Improved settings dialog sizing and layout
+- Fixed multiple UI bugs and improved error handling"
+
+# 3. Create release tag
+git tag -a v2.0.2 -m "DeeMusic v2.0.2
+
+New Features:
+- Queue visual feedback with track progress
+- Enhanced welcome dialog with download directory setup
+
+Bug Fixes:
+- Theme persistence now works correctly
+- Settings dialog sizing issues resolved
+- Queue display improvements
+
+See RELEASE_NOTES_v2.0.2.md for full details"
+
+# 4. Push to GitHub
+git push origin main
+
+# 5. Push tags
+git push origin v2.0.2
+
+# 6. Create GitHub Release
+# Go to: https://github.com/YOUR_USERNAME/DeeMusic/releases/new
+# - Tag: v2.0.2
+# - Title: DeeMusic v2.0.2 - Queue Visual Feedback & Theme Persistence
+# - Description: Copy content from CHANGELOG_v2.0.2.md
+# - Attach build artifacts (DeeMusic.Desktop.exe, etc.)

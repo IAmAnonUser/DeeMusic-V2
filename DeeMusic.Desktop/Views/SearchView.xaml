@@ -186,7 +186,7 @@
                 </StackPanel>
                 
                 <!-- Back Button and Tab Buttons -->
-                <Grid Visibility="{Binding HasResults, Converter={StaticResource BooleanToVisibilityConverter}}"
+                <Grid Visibility="{Binding ShowSearchResults, Converter={StaticResource BooleanToVisibilityConverter}}"
                       Margin="24,16,24,16">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -828,7 +828,8 @@
                            Margin="24,0,24,24">
                     
                     <!-- Artists Section -->
-                    <StackPanel Margin="0,0,0,32">
+                    <StackPanel Margin="0,0,0,32"
+                               Visibility="{Binding HasArtistResults, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Grid Margin="0,0,0,16">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -940,7 +941,8 @@
 
                     
                     <!-- Albums Section -->
-                    <StackPanel Margin="0,0,0,32">
+                    <StackPanel Margin="0,0,0,32"
+                               Visibility="{Binding HasAlbumResults, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Grid Margin="0,0,0,16">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -1091,7 +1093,8 @@
 
                     
                     <!-- Playlists Section -->
-                    <StackPanel Margin="0,0,0,32">
+                    <StackPanel Margin="0,0,0,32"
+                               Visibility="{Binding HasPlaylistResults, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Grid Margin="0,0,0,16">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -1233,6 +1236,99 @@
                                 <materialDesign:PackIcon Kind="ChevronRight" Width="24" Height="24"/>
                             </Button>
                         </Grid>
+                    </StackPanel>
+                    
+                    <!-- Tracks Section -->
+                    <StackPanel Margin="0,0,0,32"
+                               Visibility="{Binding HasTrackResults, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0"
+                                      Text="Tracks"
+                                      FontSize="20"
+                                      FontWeight="SemiBold"
+                                      VerticalAlignment="Center"/>
+                            <Button Grid.Column="1"
+                                   Content="View all"
+                                   Style="{StaticResource MaterialDesignFlatButton}"
+                                   Command="{Binding ChangeSearchTypeCommand}"
+                                   CommandParameter="track"
+                                   FontSize="13"
+                                   Padding="12,6"/>
+                        </Grid>
+                        
+                        <!-- Show first 10 tracks -->
+                        <ItemsControl>
+                            <ItemsControl.ItemsSource>
+                                <Binding Path="TrackResults" />
+                            </ItemsControl.ItemsSource>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border BorderBrush="{DynamicResource MaterialDesignDivider}"
+                                           BorderThickness="0,0,0,1"
+                                           Padding="8"
+                                           Background="Transparent">
+                                        <Border.InputBindings>
+                                            <MouseBinding MouseAction="LeftDoubleClick"
+                                                         Command="{Binding DataContext.DownloadTrackCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                         CommandParameter="{Binding}"/>
+                                        </Border.InputBindings>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="48"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            
+                                            <!-- Album Art -->
+                                            <controls:CachedImage Grid.Column="0"
+                                                                 ImageUrl="{Binding CoverMedium}"
+                                                                 Width="48"
+                                                                 Height="48"
+                                                                 Stretch="UniformToFill"/>
+                                            
+                                            <!-- Track Info -->
+                                            <StackPanel Grid.Column="1" 
+                                                       Margin="12,0,12,0"
+                                                       VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Title}"
+                                                          FontWeight="Medium"
+                                                          FontSize="14"
+                                                          TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Text="{Binding Artist.Name}"
+                                                          FontSize="12"
+                                                          Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                          TextTrimming="CharacterEllipsis"
+                                                          Margin="0,2,0,0"/>
+                                            </StackPanel>
+                                            
+                                            <!-- Duration -->
+                                            <TextBlock Grid.Column="2"
+                                                      Text="{Binding FormattedDuration}"
+                                                      FontSize="13"
+                                                      Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                      VerticalAlignment="Center"
+                                                      Margin="0,0,16,0"/>
+                                            
+                                            <!-- Download Button -->
+                                            <Button Grid.Column="3"
+                                                   Style="{StaticResource MaterialDesignIconButton}"
+                                                   Width="32"
+                                                   Height="32"
+                                                   Command="{Binding DataContext.DownloadTrackCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                   CommandParameter="{Binding}"
+                                                   ToolTip="Download Track">
+                                                <materialDesign:PackIcon Kind="Download" Width="18" Height="18"/>
+                                            </Button>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                     </StackPanel>
                     
                 </StackPanel>
