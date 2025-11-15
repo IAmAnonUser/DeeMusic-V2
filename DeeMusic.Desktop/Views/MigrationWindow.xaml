@@ -1,0 +1,338 @@
+<Window x:Class="DeeMusic.Desktop.Views.MigrationWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="DeeMusic Migration"
+        Height="500"
+        Width="600"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize"
+        Background="{DynamicResource BackgroundBrush}">
+
+    <Window.Resources>
+        <!-- Brushes will be set by theme system -->
+        <SolidColorBrush x:Key="BackgroundBrush" Color="#0a0a0a"/>
+        <SolidColorBrush x:Key="SurfaceBrush" Color="#1a1a1a"/>
+        <SolidColorBrush x:Key="PrimaryBrush" Color="#6366f1"/>
+        <SolidColorBrush x:Key="TextBrush" Color="#ffffff"/>
+        <SolidColorBrush x:Key="TextSecondaryBrush" Color="#9ca3af"/>
+        <SolidColorBrush x:Key="SuccessBrush" Color="#10b981"/>
+        <SolidColorBrush x:Key="ErrorBrush" Color="#ef4444"/>
+    </Window.Resources>
+
+    <Grid Margin="30">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,30">
+            <TextBlock Text="Welcome to DeeMusic Standalone"
+                       FontSize="24"
+                       FontWeight="Bold"
+                       Foreground="{DynamicResource TextBrush}"
+                       Margin="0,0,0,10"/>
+            <TextBlock Text="We detected a previous Python installation. Would you like to migrate your data?"
+                       FontSize="14"
+                       Foreground="{DynamicResource TextSecondaryBrush}"
+                       TextWrapping="Wrap"/>
+        </StackPanel>
+
+        <!-- Content Area -->
+        <Grid Grid.Row="1">
+            <!-- Detection View -->
+            <StackPanel x:Name="DetectionView" Visibility="Visible">
+                <Border Background="{DynamicResource SurfaceBrush}"
+                        CornerRadius="8"
+                        Padding="20"
+                        Margin="0,0,0,20">
+                    <StackPanel>
+                        <TextBlock Text="Python Installation Detected"
+                                   FontSize="16"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextBrush}"
+                                   Margin="0,0,0,15"/>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Grid.Column="0"
+                                       Text="Location:"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Margin="0,0,15,10"/>
+                            <TextBlock x:Name="LocationText"
+                                       Grid.Row="0" Grid.Column="1"
+                                       Text="..."
+                                       Foreground="{DynamicResource TextBrush}"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,10"/>
+
+                            <TextBlock Grid.Row="1" Grid.Column="0"
+                                       Text="Settings:"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Margin="0,0,15,10"/>
+                            <TextBlock x:Name="SettingsText"
+                                       Grid.Row="1" Grid.Column="1"
+                                       Text="..."
+                                       Foreground="{DynamicResource TextBrush}"
+                                       Margin="0,0,0,10"/>
+
+                            <TextBlock Grid.Row="2" Grid.Column="0"
+                                       Text="Queue Items:"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Margin="0,0,15,10"/>
+                            <TextBlock x:Name="QueueItemsText"
+                                       Grid.Row="2" Grid.Column="1"
+                                       Text="..."
+                                       Foreground="{DynamicResource TextBrush}"
+                                       Margin="0,0,0,10"/>
+
+                            <TextBlock Grid.Row="3" Grid.Column="0"
+                                       Text="History Items:"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Margin="0,0,15,0"/>
+                            <TextBlock x:Name="HistoryItemsText"
+                                       Grid.Row="3" Grid.Column="1"
+                                       Text="..."
+                                       Foreground="{DynamicResource TextBrush}"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <TextBlock Text="Your original data will be backed up before migration."
+                           FontSize="12"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           TextWrapping="Wrap"
+                           Margin="0,0,0,10"/>
+            </StackPanel>
+
+            <!-- Migration Progress View -->
+            <StackPanel x:Name="ProgressView" Visibility="Collapsed">
+                <Border Background="{DynamicResource SurfaceBrush}"
+                        CornerRadius="8"
+                        Padding="20">
+                    <StackPanel>
+                        <TextBlock Text="Migrating Your Data"
+                                   FontSize="16"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextBrush}"
+                                   Margin="0,0,0,20"/>
+
+                        <TextBlock x:Name="ProgressMessage"
+                                   Text="Starting migration..."
+                                   FontSize="14"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Margin="0,0,0,15"/>
+
+                        <ProgressBar x:Name="ProgressBar"
+                                     Height="8"
+                                     Minimum="0"
+                                     Maximum="100"
+                                     Value="0"
+                                     Foreground="{DynamicResource PrimaryBrush}"
+                                     Background="#2a2a2a"
+                                     BorderThickness="0"/>
+
+                        <TextBlock x:Name="ProgressPercent"
+                                   Text="0%"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   HorizontalAlignment="Right"
+                                   Margin="0,5,0,0"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <!-- Success View -->
+            <StackPanel x:Name="SuccessView" Visibility="Collapsed">
+                <Border Background="{DynamicResource SurfaceBrush}"
+                        CornerRadius="8"
+                        Padding="20">
+                    <StackPanel HorizontalAlignment="Center">
+                        <TextBlock Text="✓"
+                                   FontSize="48"
+                                   Foreground="{DynamicResource SuccessBrush}"
+                                   HorizontalAlignment="Center"
+                                   Margin="0,0,0,20"/>
+
+                        <TextBlock Text="Migration Complete!"
+                                   FontSize="18"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextBrush}"
+                                   HorizontalAlignment="Center"
+                                   Margin="0,0,0,10"/>
+
+                        <TextBlock x:Name="SuccessMessage"
+                                   Text="Your settings and queue have been successfully migrated."
+                                   FontSize="14"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   TextWrapping="Wrap"
+                                   TextAlignment="Center"
+                                   Margin="0,0,0,15"/>
+
+                        <TextBlock x:Name="BackupPathText"
+                                   Text=""
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   TextWrapping="Wrap"
+                                   TextAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <!-- Error View -->
+            <StackPanel x:Name="ErrorView" Visibility="Collapsed">
+                <Border Background="{DynamicResource SurfaceBrush}"
+                        CornerRadius="8"
+                        Padding="20">
+                    <StackPanel>
+                        <TextBlock Text="⚠"
+                                   FontSize="48"
+                                   Foreground="{DynamicResource ErrorBrush}"
+                                   HorizontalAlignment="Center"
+                                   Margin="0,0,0,20"/>
+
+                        <TextBlock Text="Migration Error"
+                                   FontSize="18"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextBrush}"
+                                   HorizontalAlignment="Center"
+                                   Margin="0,0,0,10"/>
+
+                        <TextBlock x:Name="ErrorMessage"
+                                   Text=""
+                                   FontSize="14"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   TextWrapping="Wrap"
+                                   TextAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Grid>
+
+        <!-- Buttons -->
+        <StackPanel Grid.Row="2"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Margin="0,30,0,0">
+            <Button x:Name="SkipButton"
+                    Content="Skip Migration"
+                    Width="130"
+                    Height="40"
+                    Margin="0,0,10,0"
+                    Background="Transparent"
+                    Foreground="{DynamicResource TextSecondaryBrush}"
+                    BorderBrush="{DynamicResource TextSecondaryBrush}"
+                    BorderThickness="1"
+                    FontSize="14"
+                    Cursor="Hand"
+                    Click="SkipButton_Click">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}"
+                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                            BorderThickness="{TemplateBinding BorderThickness}"
+                                            CornerRadius="6">
+                                        <ContentPresenter HorizontalAlignment="Center"
+                                                          VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#2a2a2a"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+
+            <Button x:Name="MigrateButton"
+                    Content="Migrate Data"
+                    Width="130"
+                    Height="40"
+                    Background="{DynamicResource PrimaryBrush}"
+                    Foreground="White"
+                    BorderThickness="0"
+                    FontSize="14"
+                    FontWeight="SemiBold"
+                    Cursor="Hand"
+                    Click="MigrateButton_Click">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}"
+                                            CornerRadius="6">
+                                        <ContentPresenter HorizontalAlignment="Center"
+                                                          VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Opacity" Value="0.9"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.5"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+
+            <Button x:Name="CloseButton"
+                    Content="Close"
+                    Width="130"
+                    Height="40"
+                    Background="{DynamicResource PrimaryBrush}"
+                    Foreground="White"
+                    BorderThickness="0"
+                    FontSize="14"
+                    FontWeight="SemiBold"
+                    Cursor="Hand"
+                    Visibility="Collapsed"
+                    Click="CloseButton_Click">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}"
+                                            CornerRadius="6">
+                                        <ContentPresenter HorizontalAlignment="Center"
+                                                          VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Opacity" Value="0.9"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+        </StackPanel>
+    </Grid>
+</Window>

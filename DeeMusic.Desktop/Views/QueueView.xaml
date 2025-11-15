@@ -1,0 +1,427 @@
+<!-- XAML VERSION: 2025-11-15-05:15:00 - INCLUDES STATIC TEST TEXT -->
+<UserControl x:Class="DeeMusic.Desktop.Views.QueueView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:converters="clr-namespace:DeeMusic.Desktop.Converters"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             mc:Ignorable="d" 
+             d:DesignHeight="600" d:DesignWidth="800">
+    <UserControl.Resources>
+        <converters:ProgressBarColorConverter x:Key="ProgressBarColorConverter"/>
+        <converters:ProgressTextColorConverter x:Key="ProgressTextColorConverter"/>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+    </UserControl.Resources>
+    
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        
+        <!-- Header with Stats -->
+        <Border Grid.Row="0" 
+                Background="{DynamicResource MaterialDesignCardBackground}"
+                Padding="16">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <TextBlock Text="Download Queue" 
+                              FontSize="20" 
+                              FontWeight="SemiBold"
+                              VerticalAlignment="Center"/>
+                    
+                    <Border Background="{DynamicResource PrimaryHueMidBrush}"
+                           CornerRadius="12"
+                           Padding="12,4"
+                           Margin="16,0,0,0"
+                           VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Stats.Total, StringFormat='{}{0} items'}"
+                                  FontSize="12"
+                                  FontWeight="Medium"/>
+                    </Border>
+                </StackPanel>
+                
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <Button Style="{StaticResource MaterialDesignOutlinedButton}"
+                           Command="{Binding ClearAllCommand}"
+                           Height="36"
+                           Margin="0,0,8,0">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="DeleteForever" 
+                                                   Width="20" 
+                                                   Height="20"
+                                                   VerticalAlignment="Center"/>
+                            <TextBlock Text="Clear All" 
+                                      Margin="8,0,0,0"
+                                      VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    
+                    <Button Style="{StaticResource MaterialDesignOutlinedButton}"
+                           Command="{Binding ClearCompletedCommand}"
+                           Height="36"
+                           Margin="0,0,8,0">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="DeleteSweep" 
+                                                   Width="20" 
+                                                   Height="20"
+                                                   VerticalAlignment="Center"/>
+                            <TextBlock Text="Clear Completed" 
+                                      Margin="8,0,0,0"
+                                      VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    
+                    <Button Style="{StaticResource MaterialDesignOutlinedButton}"
+                           Command="{Binding RetryFailedCommand}"
+                           Height="36">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="Refresh" 
+                                                   Width="20" 
+                                                   Height="20"
+                                                   VerticalAlignment="Center"/>
+                            <TextBlock Text="Retry Failed" 
+                                      Margin="8,0,0,0"
+                                      VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+        
+        <!-- Stats Bar -->
+        <Border Grid.Row="1" 
+                Background="{DynamicResource MaterialDesignCardBackground}"
+                BorderBrush="{DynamicResource MaterialDesignDivider}"
+                BorderThickness="0,1,0,1"
+                Padding="16,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                
+                <!-- Total Tracks -->
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="Total" 
+                              FontSize="12"
+                              Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                    <TextBlock Text="{Binding Stats.Total}" 
+                              FontSize="20"
+                              FontWeight="SemiBold"
+                              Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                </StackPanel>
+                
+                <!-- Completed Tracks -->
+                <StackPanel Grid.Column="1">
+                    <TextBlock Text="Completed" 
+                              FontSize="12"
+                              Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                    <TextBlock Text="{Binding Stats.Completed}" 
+                              FontSize="20"
+                              FontWeight="SemiBold"
+                              Foreground="#10b981"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+        
+        <!-- Queue List with Virtual Scrolling -->
+        <ListView x:Name="QueueListView"
+                 Grid.Row="2"
+                 ItemsSource="{Binding QueueItems}"
+                 VirtualizingPanel.IsVirtualizing="True"
+                 VirtualizingPanel.VirtualizationMode="Recycling"
+                 VirtualizingPanel.ScrollUnit="Pixel"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                 SelectionMode="Single"
+                 Background="Transparent"
+                 BorderThickness="0">
+            
+            <ListView.ItemContainerStyle>
+                <Style TargetType="ListViewItem" BasedOn="{StaticResource MaterialDesignListBoxItem}">
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                    <Setter Property="Padding" Value="0"/>
+                    <Setter Property="Margin" Value="0"/>
+                </Style>
+            </ListView.ItemContainerStyle>
+            
+            <ListView.ItemTemplate>
+                <DataTemplate>
+                    <!-- Queue Item Card with Completion Background -->
+                    <Border Margin="16,8" CornerRadius="8">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsCompleted}" Value="True">
+                                        <Setter Property="Background" Value="#E8F5E9"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        
+                        <materialDesign:Card UniformCornerRadius="8" Padding="16">
+                            <materialDesign:Card.Style>
+                                <Style TargetType="materialDesign:Card" BasedOn="{StaticResource {x:Type materialDesign:Card}}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsCompleted}" Value="True">
+                                            <Setter Property="Background" Value="#E8F5E9"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </materialDesign:Card.Style>
+                            <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="60"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <!-- Artwork -->
+                            <Border Grid.Column="0" 
+                                   Width="60" 
+                                   Height="60"
+                                   CornerRadius="4"
+                                   Background="{DynamicResource MaterialDesignDivider}">
+                                <Image Source="{Binding CoverUrl}" 
+                                      Stretch="UniformToFill"/>
+                            </Border>
+                            
+                            <!-- Info and Progress -->
+                            <StackPanel Grid.Column="1" 
+                                       Margin="16,0"
+                                       VerticalAlignment="Center">
+                                
+                                <!-- Title and Artist -->
+                                <TextBlock Text="{Binding DisplayTitle}" 
+                                          FontWeight="SemiBold"
+                                          FontSize="14"
+                                          Foreground="Red"
+                                          TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Text="{Binding Artist}" 
+                                          FontSize="12"
+                                          Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                          TextTrimming="CharacterEllipsis"
+                                          Margin="0,2,0,0"/>
+                                
+                                <!-- STATIC TEST TEXT -->
+                                <TextBlock Text="★ STATIC TEST TEXT ★" 
+                                          FontSize="14"
+                                          Foreground="Red"
+                                          FontWeight="Bold"
+                                          Margin="0,4,0,0"/>
+                                
+                                <!-- Track Progress for Albums/Playlists -->
+                                <TextBlock Text="{Binding TrackProgressText}" 
+                                          FontSize="11"
+                                          Foreground="Red"
+                                          FontWeight="Bold"
+                                          Margin="0,4,0,0"
+                                          Visibility="Visible"/>
+                                <!-- DEBUG -->
+                                <TextBlock Text="{Binding Type, StringFormat='Type: {0}'}" 
+                                          FontSize="9"
+                                          Foreground="Orange"
+                                          Margin="0,2,0,0"/>
+                                <TextBlock Text="{Binding TotalTracks, StringFormat='TotalTracks: {0}'}" 
+                                          FontSize="9"
+                                          Foreground="Orange"
+                                          Margin="0,2,0,0"/>
+                                <TextBlock Text="{Binding IsAlbumOrPlaylist, StringFormat='IsAlbumOrPlaylist: {0}'}" 
+                                          FontSize="9"
+                                          Foreground="Orange"
+                                          Margin="0,2,0,0"/>
+                                
+                                <!-- Progress Bar (visible when downloading) -->
+                                <Grid Margin="0,8,0,0"
+                                     Visibility="{Binding IsDownloading, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    
+                                    <ProgressBar Grid.Column="0"
+                                               Value="{Binding Progress}"
+                                               Maximum="100"
+                                               Height="16"
+                                               VerticalAlignment="Center"
+                                               BorderThickness="1"
+                                               BorderBrush="#d1d5db"
+                                               Background="#f3f4f6"
+                                               Foreground="{Binding IsCompleted, Converter={StaticResource ProgressBarColorConverter}}"/>
+                                    
+                                    <TextBlock Grid.Column="1"
+                                             Text="{Binding Progress, StringFormat='{}{0}%'}"
+                                             FontSize="14"
+                                             FontWeight="Bold"
+                                             Margin="12,0,0,0"
+                                             VerticalAlignment="Center"
+                                             Foreground="{Binding IsCompleted, Converter={StaticResource ProgressTextColorConverter}}"/>
+                                </Grid>
+                                
+                                <!-- Speed and ETA -->
+                                <StackPanel Orientation="Horizontal" 
+                                           Margin="0,4,0,0"
+                                           Visibility="{Binding IsDownloading, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <TextBlock Text="{Binding Speed}" 
+                                             FontSize="11"
+                                             Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                                    <TextBlock Text=" • " 
+                                             FontSize="11"
+                                             Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                             Margin="4,0"/>
+                                    <TextBlock Text="{Binding ETA}" 
+                                             FontSize="11"
+                                             Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                                </StackPanel>
+                                
+                                <!-- Status Badge -->
+                                <Border Background="{Binding StatusColor}"
+                                       CornerRadius="4"
+                                       Padding="8,4"
+                                       HorizontalAlignment="Left"
+                                       Margin="0,4,0,0"
+                                       Visibility="{Binding ShowStatusBadge, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <TextBlock Text="{Binding Status}" 
+                                             FontSize="11"
+                                             FontWeight="Medium"/>
+                                </Border>
+                            </StackPanel>
+                            
+                            <!-- Control Buttons -->
+                            <StackPanel Grid.Column="2" 
+                                       Orientation="Horizontal"
+                                       VerticalAlignment="Center">
+                                
+                                <!-- Pause Button -->
+                                <Button Style="{StaticResource MaterialDesignIconButton}"
+                                       Width="40"
+                                       Height="40"
+                                       Command="{Binding DataContext.PauseCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                       CommandParameter="{Binding}"
+                                       Visibility="{Binding CanPause, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                       ToolTip="Pause">
+                                    <materialDesign:PackIcon Kind="Pause" Width="20" Height="20"/>
+                                </Button>
+                                
+                                <!-- Resume Button -->
+                                <Button Style="{StaticResource MaterialDesignIconButton}"
+                                       Width="40"
+                                       Height="40"
+                                       Command="{Binding DataContext.ResumeCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                       CommandParameter="{Binding}"
+                                       Visibility="{Binding CanResume, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                       ToolTip="Resume">
+                                    <materialDesign:PackIcon Kind="Play" Width="20" Height="20"/>
+                                </Button>
+                                
+                                <!-- Retry Button -->
+                                <Button Style="{StaticResource MaterialDesignIconButton}"
+                                       Width="40"
+                                       Height="40"
+                                       Command="{Binding DataContext.RetryCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                       CommandParameter="{Binding}"
+                                       Visibility="{Binding CanRetry, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                       ToolTip="Retry">
+                                    <materialDesign:PackIcon Kind="Refresh" Width="20" Height="20"/>
+                                </Button>
+                                
+                                <!-- Cancel Button -->
+                                <Button Style="{StaticResource MaterialDesignIconButton}"
+                                       Width="40"
+                                       Height="40"
+                                       Command="{Binding DataContext.CancelCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                       CommandParameter="{Binding}"
+                                       Visibility="{Binding CanCancel, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                       ToolTip="Cancel">
+                                    <materialDesign:PackIcon Kind="Close" Width="20" Height="20"/>
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+                    </materialDesign:Card>
+                </Border>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+        
+        <!-- Empty State -->
+        <StackPanel Grid.Row="2"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center"
+                   Visibility="{Binding IsQueueEmpty, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <materialDesign:PackIcon Kind="Download" 
+                                   Width="64" 
+                                   Height="64"
+                                   Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                   HorizontalAlignment="Center"/>
+            <TextBlock Text="No downloads in queue" 
+                      FontSize="16"
+                      Foreground="{DynamicResource MaterialDesignBodyLight}"
+                      Margin="0,16,0,0"
+                      HorizontalAlignment="Center"/>
+        </StackPanel>
+        
+        <!-- Pagination Controls -->
+        <Border Grid.Row="3"
+               Background="{DynamicResource MaterialDesignCardBackground}"
+               BorderBrush="{DynamicResource MaterialDesignDivider}"
+               BorderThickness="0,1,0,0"
+               Padding="16,12"
+               Visibility="{Binding ShowPagination, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                
+                <Button Grid.Column="0"
+                       Style="{StaticResource MaterialDesignOutlinedButton}"
+                       Command="{Binding LoadPreviousPageCommand}"
+                       IsEnabled="{Binding CanLoadPrevious}"
+                       Height="36">
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="ChevronLeft" 
+                                               Width="20" 
+                                               Height="20"
+                                               VerticalAlignment="Center"/>
+                        <TextBlock Text="Previous" 
+                                  Margin="4,0,0,0"
+                                  VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+                
+                <TextBlock Grid.Column="1"
+                          Text="{Binding PageInfo}"
+                          FontSize="14"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center"/>
+                
+                <Button Grid.Column="2"
+                       Style="{StaticResource MaterialDesignOutlinedButton}"
+                       Command="{Binding LoadNextPageCommand}"
+                       IsEnabled="{Binding CanLoadNext}"
+                       Height="36">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="Next" 
+                                  Margin="0,0,4,0"
+                                  VerticalAlignment="Center"/>
+                        <materialDesign:PackIcon Kind="ChevronRight" 
+                                               Width="20" 
+                                               Height="20"
+                                               VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

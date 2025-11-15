@@ -1,0 +1,700 @@
+<UserControl x:Class="DeeMusic.Desktop.Views.SettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:local="clr-namespace:DeeMusic.Desktop.Views"
+             mc:Ignorable="d" 
+             d:DesignHeight="600" d:DesignWidth="800">
+    
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+        
+        <!-- Inverse Boolean Converter -->
+        <local:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
+    </UserControl.Resources>
+    
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        
+        <!-- Header -->
+        <TextBlock Grid.Row="0"
+                  Text="Settings" 
+                  FontSize="24" 
+                  FontWeight="SemiBold"
+                  Margin="8,0,0,16"/>
+        
+        <!-- Tabbed Content -->
+        <TabControl Grid.Row="1" 
+                   Style="{StaticResource MaterialDesignTabControl}"
+                   materialDesign:ColorZoneAssist.Mode="PrimaryMid">
+            
+            <!-- Deezer Tab -->
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="Music" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBlock Text="Deezer" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </TabItem.Header>
+                
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="16">
+                    <StackPanel MaxWidth="600">
+                        <TextBlock Text="Deezer Authentication" 
+                                  FontSize="18" 
+                                  FontWeight="SemiBold"
+                                  Margin="0,0,0,16"/>
+                        
+                        <TextBox materialDesign:HintAssist.Hint="Deezer ARL Token"
+                                Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                Text="{Binding DeezerARL, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}"
+                                TextChanged="ArlTextBox_TextChanged"
+                                Margin="0,0,0,16"/>
+                        
+                        <TextBlock Text="Your ARL token is required to access Deezer content. Keep it secure."
+                                  FontSize="12"
+                                  Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                  TextWrapping="Wrap"
+                                  Margin="0,0,0,16"/>
+                        
+                        <TextBlock Text="How to find your ARL token:"
+                                  FontSize="14"
+                                  FontWeight="Medium"
+                                  Margin="0,8,0,8"/>
+                        
+                        <TextBlock TextWrapping="Wrap" Margin="0,0,0,4">
+                            <Run Text="1. Log into "/>
+                            <Hyperlink NavigateUri="https://www.deezer.com" RequestNavigate="Hyperlink_RequestNavigate">deezer.com</Hyperlink>
+                            <Run Text=" in your browser"/>
+                        </TextBlock>
+                        <TextBlock Text="2. Open Developer Tools (F12)" Margin="0,0,0,4"/>
+                        <TextBlock Text="3. Go to Application → Cookies" Margin="0,0,0,4"/>
+                        <TextBlock Text="4. Copy the 'arl' cookie value" Margin="0,0,0,4"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+            
+            <!-- Spotify Tab -->
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="Spotify" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBlock Text="Spotify" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </TabItem.Header>
+                
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="16">
+                    <StackPanel MaxWidth="600">
+                        <TextBlock Text="Spotify Integration" 
+                                  FontSize="18" 
+                                  FontWeight="SemiBold"
+                                  Margin="0,0,0,16"/>
+                        
+                        <TextBlock Text="Import Spotify playlists by pasting the playlist URL in the search bar. Tracks will be matched with Deezer."
+                                  FontSize="12"
+                                  Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                  TextWrapping="Wrap"
+                                  Margin="0,0,0,8"/>
+                        
+                        <TextBlock FontSize="12"
+                                  Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                  TextWrapping="Wrap"
+                                  Margin="0,0,0,24">
+                            <Run Text="Note: Only public playlists can be imported. Private playlists require user authentication which is not supported." FontStyle="Italic"/>
+                        </TextBlock>
+                        
+                        <TextBox materialDesign:HintAssist.Hint="Spotify Client ID"
+                                Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                Text="{Binding SpotifyClientId, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}"
+                                Margin="0,0,0,16"/>
+                        
+                        <TextBox materialDesign:HintAssist.Hint="Spotify Client Secret"
+                                Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                Text="{Binding SpotifyClientSecret, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}"
+                                Margin="0,0,0,16"/>
+                        
+                        <Button Style="{StaticResource MaterialDesignOutlinedButton}"
+                               Content="Test Connection"
+                               Command="{Binding TestSpotifyConnectionCommand}"
+                               HorizontalAlignment="Left"
+                               Margin="0,0,0,24"/>
+                        
+                        <Separator Margin="0,8,0,24"/>
+                        
+                        <TextBlock Text="How to get Spotify API credentials:"
+                                  FontSize="14"
+                                  FontWeight="Medium"
+                                  Margin="0,0,0,12"/>
+                        
+                        <TextBlock TextWrapping="Wrap" Margin="0,0,0,8">
+                            <Run Text="1. Go to "/>
+                            <Hyperlink NavigateUri="https://developer.spotify.com/dashboard" RequestNavigate="Hyperlink_RequestNavigate">Spotify Developer Dashboard</Hyperlink>
+                        </TextBlock>
+                        <TextBlock Text="2. Log in with your Spotify account" Margin="0,0,0,8"/>
+                        <TextBlock Text="3. Click 'Create app' and fill in the details (name and description can be anything)" Margin="0,0,0,8"/>
+                        <TextBlock Text="4. After creating, click 'Settings' to view your credentials" Margin="0,0,0,8"/>
+                        <TextBlock Text="5. Copy the Client ID and Client Secret" Margin="0,0,0,8"/>
+                        <TextBlock Text="6. Paste them above, click 'Test Connection', then save settings" Margin="0,0,0,8"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+            
+            <!-- Artwork Tab -->
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="Image" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBlock Text="Artwork" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </TabItem.Header>
+                
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="16">
+                    <StackPanel MaxWidth="600">
+                        <TextBlock Text="Artwork Settings" 
+                                  FontSize="18" 
+                                  FontWeight="SemiBold"
+                                  Margin="0,0,0,16"/>
+                        
+                        <!-- Embedded Artwork -->
+                        <TextBlock Text="Embedded Artwork (in audio file)" 
+                                  FontSize="14" 
+                                  FontWeight="Medium"
+                                  Margin="0,0,0,8"/>
+                        
+                        <CheckBox Content="Embed Album Artwork in Audio File"
+                                 IsChecked="{Binding EmbedArtwork}"
+                                 Margin="0,0,0,8"/>
+                        
+                        <ComboBox materialDesign:HintAssist.Hint="Embedded Artwork Size"
+                                 Style="{StaticResource MaterialDesignOutlinedComboBox}"
+                                 SelectedValue="{Binding ArtworkSize}"
+                                 SelectedValuePath="Tag"
+                                 IsEnabled="{Binding EmbedArtwork}"
+                                 Margin="0,0,0,24">
+                            <ComboBoxItem Content="500x500" Tag="500"/>
+                            <ComboBoxItem Content="1000x1000" Tag="1000"/>
+                            <ComboBoxItem Content="1200x1200" Tag="1200"/>
+                        </ComboBox>
+                        
+                        <!-- Album Cover Files -->
+                        <TextBlock Text="Album Cover (separate file)" 
+                                  FontSize="14" 
+                                  FontWeight="Medium"
+                                  Margin="0,8,0,8"/>
+                        
+                        <CheckBox Content="Save Album Cover as Separate File"
+                                 IsChecked="{Binding Settings.Download.SaveAlbumCover}"
+                                 Margin="0,0,0,8"/>
+                        
+                        <Grid Margin="0,0,0,24" IsEnabled="{Binding Settings.Download.SaveAlbumCover}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="16"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <ComboBox Grid.Column="0"
+                                     materialDesign:HintAssist.Hint="Album Cover Size"
+                                     Style="{StaticResource MaterialDesignOutlinedComboBox}"
+                                     SelectedValue="{Binding Settings.Download.AlbumCoverSize}"
+                                     SelectedValuePath="Tag">
+                                <ComboBoxItem Content="500x500" Tag="500"/>
+                                <ComboBoxItem Content="1000x1000" Tag="1000"/>
+                                <ComboBoxItem Content="1200x1200" Tag="1200"/>
+                                <ComboBoxItem Content="1500x1500" Tag="1500"/>
+                            </ComboBox>
+                            
+                            <TextBox Grid.Column="2"
+                                    materialDesign:HintAssist.Hint="Filename (e.g., cover)"
+                                    Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                    Text="{Binding Settings.Download.AlbumCoverFilename, UpdateSourceTrigger=PropertyChanged}"/>
+                        </Grid>
+                        
+                        <!-- Artist Image Files -->
+                        <TextBlock Text="Artist Image (separate file)" 
+                                  FontSize="14" 
+                                  FontWeight="Medium"
+                                  Margin="0,8,0,8"/>
+                        
+                        <CheckBox Content="Save Artist Image as Separate File"
+                                 IsChecked="{Binding Settings.Download.SaveArtistImage}"
+                                 Margin="0,0,0,8"/>
+                        
+                        <Grid Margin="0,0,0,16" IsEnabled="{Binding Settings.Download.SaveArtistImage}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="16"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <ComboBox Grid.Column="0"
+                                     materialDesign:HintAssist.Hint="Artist Image Size"
+                                     Style="{StaticResource MaterialDesignOutlinedComboBox}"
+                                     SelectedValue="{Binding Settings.Download.ArtistImageSize}"
+                                     SelectedValuePath="Tag">
+                                <ComboBoxItem Content="500x500" Tag="500"/>
+                                <ComboBoxItem Content="1000x1000" Tag="1000"/>
+                                <ComboBoxItem Content="1200x1200" Tag="1200"/>
+                                <ComboBoxItem Content="1500x1500" Tag="1500"/>
+                            </ComboBox>
+                            
+                            <TextBox Grid.Column="2"
+                                    materialDesign:HintAssist.Hint="Filename (e.g., artist)"
+                                    Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                    Text="{Binding Settings.Download.ArtistImageFilename, UpdateSourceTrigger=PropertyChanged}"/>
+                        </Grid>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- Filenaming Tab -->
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="FileDocument" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBlock Text="Filenaming" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </TabItem.Header>
+                
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="16">
+                    <StackPanel MaxWidth="700">
+                        <TextBlock Text="File and Folder Structure" 
+                                  FontSize="18" 
+                                  FontWeight="SemiBold"
+                                  Margin="0,0,0,16"/>
+                        
+                        <!-- Download Directory -->
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <TextBox Grid.Column="0"
+                                    materialDesign:HintAssist.Hint="Download Directory"
+                                    Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                    Text="{Binding DownloadPath, UpdateSourceTrigger=PropertyChanged}"
+                                    IsReadOnly="True"/>
+                            
+                            <Button Grid.Column="1"
+                                   Style="{StaticResource MaterialDesignOutlinedButton}"
+                                   Command="{Binding BrowseFolderCommand}"
+                                   Margin="8,0,0,0"
+                                   Height="56">
+                                <StackPanel Orientation="Horizontal">
+                                    <materialDesign:PackIcon Kind="Folder" Width="20" Height="20" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Browse" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+                        
+                        <!-- Audio Quality -->
+                        <ComboBox materialDesign:HintAssist.Hint="Audio Quality"
+                                 Style="{StaticResource MaterialDesignOutlinedComboBox}"
+                                 SelectedValue="{Binding Quality}"
+                                 SelectedValuePath="Tag"
+                                 Margin="0,0,0,16">
+                            <ComboBoxItem Content="MP3 128 kbps" Tag="MP3_128"/>
+                            <ComboBoxItem Content="MP3 320 kbps" Tag="MP3_320"/>
+                            <ComboBoxItem Content="FLAC (Lossless)" Tag="FLAC"/>
+                        </ComboBox>
+                        
+                        <!-- Concurrent Downloads -->
+                        <Grid Margin="0,0,0,24">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <TextBlock Grid.Column="0"
+                                      Text="Concurrent Downloads"
+                                      VerticalAlignment="Center"/>
+                            
+                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                <Slider Width="200"
+                                       Minimum="1"
+                                       Maximum="12"
+                                       Value="{Binding ConcurrentDownloads}"
+                                       TickFrequency="1"
+                                       IsSnapToTickEnabled="True"
+                                       VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding ConcurrentDownloads}"
+                                          Width="30"
+                                          TextAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          Margin="8,0,0,0"/>
+                            </StackPanel>
+                        </Grid>
+                        
+                        <!-- Filename Templates -->
+                        <TextBlock Text="Filename Templates" 
+                                  FontSize="16" 
+                                  FontWeight="Medium"
+                                  Margin="0,8,0,12"/>
+                        
+                        <TextBox materialDesign:HintAssist.Hint="Single Track Template"
+                                Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                Text="{Binding Settings.Download.SingleTrackTemplate, UpdateSourceTrigger=PropertyChanged}"
+                                Margin="0,0,0,12"/>
+                        
+                        <TextBox materialDesign:HintAssist.Hint="Album Track Template"
+                                Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                Text="{Binding Settings.Download.AlbumTrackTemplate, UpdateSourceTrigger=PropertyChanged}"
+                                Margin="0,0,0,12"/>
+                        
+                        <TextBox materialDesign:HintAssist.Hint="Playlist Track Template"
+                                Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                Text="{Binding Settings.Download.PlaylistTrackTemplate, UpdateSourceTrigger=PropertyChanged}"
+                                Margin="0,0,0,8"/>
+                        
+                        <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="0,0,0,24">
+                            <Run Text="Available placeholders:"/>
+                            <LineBreak/>
+                            <Run Text="• {artist}, {album}, {title}, {album_artist}, {genre}"/>
+                            <LineBreak/>
+                            <Run Text="• {track_number}, {playlist_position}, {disc_number}"/>
+                            <LineBreak/>
+                            <Run Text="• {year}, {playlist_name}, {playlist}, {isrc}"/>
+                            <LineBreak/>
+                            <Run Text="Use :02d for zero-padded numbers (e.g., {track_number:02d})"/>
+                        </TextBlock>
+                        
+                        <!-- Folder Structure -->
+                        <TextBlock Text="Folder Structure" 
+                                  FontSize="16" 
+                                  FontWeight="Medium"
+                                  Margin="0,8,0,12"/>
+                        
+                        <TextBlock Text="Folder Creation" 
+                                  FontSize="14" 
+                                  FontWeight="Medium"
+                                  Margin="0,0,0,8"/>
+                        
+                        <CheckBox Content="Create folder for playlists"
+                                 IsChecked="{Binding Settings.Download.CreatePlaylistFolder}"
+                                 Margin="0,0,0,4"/>
+                        <CheckBox Content="Create folder for artist"
+                                 IsChecked="{Binding Settings.Download.CreateArtistFolder}"
+                                 Margin="0,0,0,4"/>
+                        <CheckBox Content="Create folder for album"
+                                 IsChecked="{Binding Settings.Download.CreateAlbumFolder}"
+                                 Margin="0,0,0,4"/>
+                        <CheckBox Content="Create folder for CDs"
+                                 IsChecked="{Binding Settings.Download.CreateCDFolder}"
+                                 Margin="0,0,0,4"/>
+                        <CheckBox Content="Create folder structure for playlists"
+                                 IsChecked="{Binding Settings.Download.PlaylistFolderStructure}"
+                                 Margin="0,0,0,4"/>
+                        <CheckBox Content="Create folder structure for singles"
+                                 IsChecked="{Binding Settings.Download.SinglesFolderStructure}"
+                                 Margin="0,0,0,16"/>
+                        
+                        <TextBlock Text="Folder Name Templates" 
+                                  FontSize="14" 
+                                  FontWeight="Medium"
+                                  Margin="0,8,0,8"/>
+                        
+                        <TextBox materialDesign:HintAssist.Hint="Playlist Folder Template"
+                                Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                Text="{Binding Settings.Download.PlaylistFolderTemplate, UpdateSourceTrigger=PropertyChanged}"
+                                Margin="0,0,0,12"/>
+                        
+                        <TextBox materialDesign:HintAssist.Hint="Artist Folder Template"
+                                Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                Text="{Binding Settings.Download.ArtistFolderTemplate, UpdateSourceTrigger=PropertyChanged}"
+                                Margin="0,0,0,12"/>
+                        
+                        <TextBox materialDesign:HintAssist.Hint="Album Folder Template"
+                                Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                Text="{Binding Settings.Download.AlbumFolderTemplate, UpdateSourceTrigger=PropertyChanged}"
+                                Margin="0,0,0,12"/>
+                        
+                        <TextBox materialDesign:HintAssist.Hint="CD Folder Template"
+                                Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                Text="{Binding Settings.Download.CDFolderTemplate, UpdateSourceTrigger=PropertyChanged}"
+                                Margin="0,0,0,8"/>
+                        
+                        <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="0,0,0,16">
+                            <Run Text="Available placeholders:"/>
+                            <LineBreak/>
+                            <Run Text="• {playlist} - Playlist name"/>
+                            <LineBreak/>
+                            <Run Text="• {artist} - Artist name"/>
+                            <LineBreak/>
+                            <Run Text="• {album} - Album name"/>
+                            <LineBreak/>
+                            <Run Text="• {disc_number} - Disc number"/>
+                            <LineBreak/>
+                            <Run Text="• {year} - Release year"/>
+                        </TextBlock>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+            
+            <!-- Lyrics Tab -->
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="TextBox" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBlock Text="Lyrics" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </TabItem.Header>
+                
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="16">
+                    <StackPanel MaxWidth="600">
+                        <TextBlock Text="Lyrics Settings" 
+                                  FontSize="18" 
+                                  FontWeight="SemiBold"
+                                  Margin="0,0,0,16"/>
+                        
+                        <CheckBox Content="Enable Lyrics Download"
+                                 IsChecked="{Binding Settings.Lyrics.Enabled}"
+                                 Margin="0,0,0,24"/>
+                        
+                        <!-- Synced Lyrics -->
+                        <TextBlock Text="Synced Lyrics (LRC format with timestamps)" 
+                                  FontSize="14" 
+                                  FontWeight="Medium"
+                                  Margin="0,0,0,8"/>
+                        
+                        <CheckBox Content="Download Synced Lyrics"
+                                 IsChecked="{Binding Settings.Lyrics.SyncedLyrics}"
+                                 IsEnabled="{Binding Settings.Lyrics.Enabled}"
+                                 Margin="0,0,0,8"/>
+                        
+                        <CheckBox Content="Embed Synced Lyrics in Audio File"
+                                 IsChecked="{Binding Settings.Lyrics.EmbedSynced}"
+                                 IsEnabled="{Binding Settings.Lyrics.SyncedLyrics}"
+                                 Margin="16,0,0,8"/>
+                        
+                        <CheckBox Content="Save Synced Lyrics as Separate File (.lrc)"
+                                 IsChecked="{Binding Settings.Lyrics.SaveSyncedFile}"
+                                 IsEnabled="{Binding Settings.Lyrics.SyncedLyrics}"
+                                 Margin="16,0,0,8"/>
+                        
+                        <TextBlock Text="Synced lyrics will be saved as: trackname.lrc"
+                                  FontSize="11"
+                                  Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                  Margin="16,0,0,24"
+                                  Visibility="{Binding Settings.Lyrics.SaveSyncedFile, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                        
+                        <!-- Unsynced Lyrics -->
+                        <TextBlock Text="Unsynced Lyrics (Plain text without timestamps)" 
+                                  FontSize="14" 
+                                  FontWeight="Medium"
+                                  Margin="0,8,0,8"/>
+                        
+                        <CheckBox Content="Download Unsynced Lyrics"
+                                 IsChecked="{Binding Settings.Lyrics.UnsyncedLyrics}"
+                                 IsEnabled="{Binding Settings.Lyrics.Enabled}"
+                                 Margin="0,0,0,8"/>
+                        
+                        <CheckBox Content="Embed Unsynced Lyrics in Audio File"
+                                 IsChecked="{Binding Settings.Lyrics.EmbedUnsynced}"
+                                 IsEnabled="{Binding Settings.Lyrics.UnsyncedLyrics}"
+                                 Margin="16,0,0,8"/>
+                        
+                        <CheckBox Content="Save Unsynced Lyrics as Separate File (.txt)"
+                                 IsChecked="{Binding Settings.Lyrics.SaveUnsyncedFile}"
+                                 IsEnabled="{Binding Settings.Lyrics.UnsyncedLyrics}"
+                                 Margin="16,0,0,8"/>
+                        
+                        <TextBlock Text="Unsynced lyrics will be saved as: trackname.txt"
+                                  FontSize="11"
+                                  Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                  Margin="16,0,0,16"
+                                  Visibility="{Binding Settings.Lyrics.SaveUnsyncedFile, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+            
+            <!-- Updates Tab -->
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="Update" Width="20" Height="20" VerticalAlignment="Center"/>
+                        <TextBlock Text="Updates" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </TabItem.Header>
+                
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="16" MaxWidth="600">
+                        <TextBlock Text="Application Updates"
+                                  FontSize="18"
+                                  FontWeight="SemiBold"
+                                  Margin="0,0,0,16"/>
+                        
+                        <!-- Update Settings -->
+                        <CheckBox Content="Check for updates automatically"
+                                 IsChecked="{Binding CheckForUpdates}"
+                                 Margin="0,0,0,8"/>
+                        
+                        <CheckBox Content="Download updates automatically"
+                                 IsChecked="{Binding AutoDownloadUpdates}"
+                                 IsEnabled="{Binding CheckForUpdates}"
+                                 Margin="0,0,0,16"/>
+                        
+                        <TextBlock Text="When enabled, updates will be downloaded in the background. You'll be notified when an update is ready to install."
+                                  FontSize="12"
+                                  Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                  TextWrapping="Wrap"
+                                  Margin="0,0,0,24"/>
+                        
+                        <!-- Check for Updates Button -->
+                        <Button Style="{StaticResource MaterialDesignOutlinedButton}"
+                               Command="{Binding CheckForUpdatesCommand}"
+                               Height="40"
+                               HorizontalAlignment="Left"
+                               Padding="24,0"
+                               Margin="0,0,0,16">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="Refresh" 
+                                                        Width="20" 
+                                                        Height="20" 
+                                                        VerticalAlignment="Center"
+                                                        RenderTransformOrigin="0.5,0.5">
+                                    <materialDesign:PackIcon.Style>
+                                        <Style TargetType="materialDesign:PackIcon">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsCheckingForUpdates}" Value="True">
+                                                    <DataTrigger.EnterActions>
+                                                        <BeginStoryboard>
+                                                            <Storyboard RepeatBehavior="Forever">
+                                                                <DoubleAnimation Storyboard.TargetProperty="RenderTransform.(RotateTransform.Angle)"
+                                                                               From="0" To="360" Duration="0:0:1"/>
+                                                            </Storyboard>
+                                                        </BeginStoryboard>
+                                                    </DataTrigger.EnterActions>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </materialDesign:PackIcon.Style>
+                                    <materialDesign:PackIcon.RenderTransform>
+                                        <RotateTransform/>
+                                    </materialDesign:PackIcon.RenderTransform>
+                                </materialDesign:PackIcon>
+                                <TextBlock Text="Check for Updates" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        
+                        <!-- Update Available Section -->
+                        <Border BorderBrush="{DynamicResource PrimaryHueMidBrush}"
+                               BorderThickness="2"
+                               CornerRadius="8"
+                               Padding="16"
+                               Margin="0,0,0,16"
+                               Visibility="{Binding IsUpdateAvailable, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <StackPanel>
+                                <TextBlock Text="Update Available!"
+                                          FontSize="16"
+                                          FontWeight="SemiBold"
+                                          Foreground="{DynamicResource PrimaryHueMidBrush}"
+                                          Margin="0,0,0,8"/>
+                                
+                                <TextBlock Margin="0,0,0,8">
+                                    <Run Text="Version "/>
+                                    <Run Text="{Binding UpdateVersion, Mode=OneWay}" FontWeight="SemiBold"/>
+                                    <Run Text=" is available"/>
+                                </TextBlock>
+                                
+                                <TextBlock Text="Release Notes:"
+                                          FontWeight="Medium"
+                                          Margin="0,8,0,4"/>
+                                
+                                <ScrollViewer MaxHeight="150" VerticalScrollBarVisibility="Auto">
+                                    <TextBlock Text="{Binding UpdateReleaseNotes}"
+                                              TextWrapping="Wrap"
+                                              Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                              Margin="0,0,0,12"/>
+                                </ScrollViewer>
+                                
+                                <!-- Download Progress -->
+                                <ProgressBar Value="{Binding DownloadProgress, Mode=OneWay}"
+                                            Height="4"
+                                            Margin="0,8,0,8"
+                                            Visibility="{Binding IsDownloadingUpdate, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                
+                                <TextBlock Text="{Binding DownloadProgress, Mode=OneWay, StringFormat='Downloading... {0}%'}"
+                                          FontSize="12"
+                                          Margin="0,0,0,8"
+                                          Visibility="{Binding IsDownloadingUpdate, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                
+                                <!-- Install Button -->
+                                <Button Style="{StaticResource MaterialDesignRaisedButton}"
+                                       Command="{Binding InstallUpdateCommand}"
+                                       Height="40"
+                                       HorizontalAlignment="Stretch"
+                                       IsEnabled="{Binding IsDownloadingUpdate, Converter={StaticResource InverseBooleanConverter}}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <materialDesign:PackIcon Kind="Download" Width="20" Height="20" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Download and Install" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+                        </Border>
+                        
+                        <!-- Current Version Info -->
+                        <TextBlock FontSize="12" Foreground="{DynamicResource MaterialDesignBodyLight}">
+                            <Run Text="Current Version: "/>
+                            <Run Text="2.0.4" FontWeight="Medium"/>
+                        </TextBlock>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+            
+            <!-- Cache Tab -->
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="Database" Width="20" Height="20" VerticalAlignment="Center"/>
+                        <TextBlock Text="Cache" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </TabItem.Header>
+                
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="16">
+                        <TextBlock Text="Image Cache"
+                                  FontSize="16"
+                                  FontWeight="SemiBold"
+                                  Margin="0,0,0,8"/>
+                        
+                        <TextBlock Text="DeeMusic caches album artwork and images to improve loading performance. You can clear the cache if you're experiencing issues or want to free up disk space."
+                                  TextWrapping="Wrap"
+                                  Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                  Margin="0,0,0,16"/>
+                        
+                        <Button Style="{StaticResource MaterialDesignOutlinedButton}"
+                               Command="{Binding ClearImageCacheCommand}"
+                               Height="40"
+                               HorizontalAlignment="Left"
+                               Padding="24,0">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="DeleteSweep" Width="20" Height="20" VerticalAlignment="Center"/>
+                                <TextBlock Text="Clear Image Cache" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+            
+        </TabControl>
+        
+        <!-- Save Button -->
+        <Button Grid.Row="2"
+               Style="{StaticResource MaterialDesignRaisedButton}"
+               Command="{Binding SaveCommand}"
+               Height="48"
+               HorizontalAlignment="Stretch"
+               Margin="8,16,8,8">
+            <StackPanel Orientation="Horizontal">
+                <materialDesign:PackIcon Kind="ContentSave" Width="24" Height="24" VerticalAlignment="Center"/>
+                <TextBlock Text="Save Settings" Margin="8,0,0,0" VerticalAlignment="Center" FontSize="14" FontWeight="Medium"/>
+            </StackPanel>
+        </Button>
+    </Grid>
+</UserControl>
