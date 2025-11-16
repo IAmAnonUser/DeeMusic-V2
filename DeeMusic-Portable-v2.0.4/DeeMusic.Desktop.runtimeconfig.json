@@ -1,14 +1,14 @@
 {
   "runtimeOptions": {
     "tfm": "net8.0",
-    "frameworks": [
+    "includedFrameworks": [
       {
         "name": "Microsoft.NETCore.App",
-        "version": "8.0.0"
+        "version": "8.0.21"
       },
       {
         "name": "Microsoft.WindowsDesktop.App",
-        "version": "8.0.0"
+        "version": "8.0.21"
       }
     ],
     "configProperties": {
