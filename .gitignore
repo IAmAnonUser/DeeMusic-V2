@@ -113,3 +113,6 @@ docs/
 push-to-github.bat
 push-to-github.ps1
 setup-github-auth.ps1
+
+# Build outputs from release script
+scripts/releases/
