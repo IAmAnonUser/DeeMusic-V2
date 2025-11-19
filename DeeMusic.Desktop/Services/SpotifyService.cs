@@ -19,6 +19,8 @@ namespace DeeMusic.Desktop.Services
         private string _clientId = string.Empty;
         private string _clientSecret = string.Empty;
 
+        public event EventHandler<ImportProgressEventArgs>? ImportProgressChanged;
+
         public SpotifyService(DeeMusicService deezerService)
         {
             _httpClient = new HttpClient();
@@ -116,7 +118,46 @@ namespace DeeMusic.Desktop.Services
                 throw new Exception("Failed to parse Spotify playlist");
             }
             
-            LoggingService.Instance.LogInfo($"Parsed playlist: {spotifyPlaylist.Name}, {spotifyPlaylist.Tracks?.Total ?? 0} tracks");
+            var totalTracks = spotifyPlaylist.Tracks?.Total ?? 0;
+            LoggingService.Instance.LogInfo($"Parsed playlist: {spotifyPlaylist.Name}, {totalTracks} total tracks");
+
+            // Collect all track items (handle pagination)
+            var allTrackItems = new List<SpotifyTrackItem>();
+            if (spotifyPlaylist.Tracks?.Items != null)
+            {
+                allTrackItems.AddRange(spotifyPlaylist.Tracks.Items);
+                LoggingService.Instance.LogInfo($"Got first page: {allTrackItems.Count} tracks");
+            }
+
+            // Fetch remaining pages if needed (Spotify returns 100 tracks per page by default)
+            var nextUrl = spotifyPlaylist.Tracks?.Next;
+            while (!string.IsNullOrEmpty(nextUrl))
+            {
+                LoggingService.Instance.LogInfo($"Fetching next page: {allTrackItems.Count}/{totalTracks} tracks loaded...");
+                
+                var pageRequest = new HttpRequestMessage(HttpMethod.Get, nextUrl);
+                pageRequest.Headers.Add("Authorization", $"Bearer {token}");
+                
+                var pageResponse = await _httpClient.SendAsync(pageRequest);
+                if (!pageResponse.IsSuccessStatusCode)
+                {
+                    LoggingService.Instance.LogWarning($"Failed to fetch page, stopping pagination: {pageResponse.StatusCode}");
+                    break;
+                }
+                
+                var pageJson = await pageResponse.Content.ReadAsStringAsync();
+                var pageTracks = JsonSerializer.Deserialize<SpotifyTracks>(pageJson);
+                
+                if (pageTracks?.Items != null)
+                {
+                    allTrackItems.AddRange(pageTracks.Items);
+                    LoggingService.Instance.LogInfo($"Loaded page: {allTrackItems.Count}/{totalTracks} tracks");
+                }
+                
+                nextUrl = pageTracks?.Next;
+            }
+
+            LoggingService.Instance.LogInfo($"Finished loading all pages: {allTrackItems.Count} tracks total");
 
             // Convert to Deezer playlist format
             var deezerPlaylist = new Playlist
@@ -124,7 +165,7 @@ namespace DeeMusic.Desktop.Services
                 Id = $"spotify_{playlistId}",
                 Title = spotifyPlaylist.Name ?? "Imported Playlist",
                 Description = spotifyPlaylist.Description ?? "",
-                TrackCount = spotifyPlaylist.Tracks?.Total ?? 0,
+                TrackCount = totalTracks,
                 Picture = spotifyPlaylist.Images?.FirstOrDefault()?.Url ?? "",
                 PictureSmall = spotifyPlaylist.Images?.FirstOrDefault()?.Url ?? "",
                 PictureMedium = spotifyPlaylist.Images?.FirstOrDefault()?.Url ?? "",
@@ -141,15 +182,18 @@ namespace DeeMusic.Desktop.Services
             };
 
             // Match tracks with Deezer
-            if (spotifyPlaylist.Tracks?.Items != null)
+            if (allTrackItems.Count > 0)
             {
-                LoggingService.Instance.LogInfo($"Matching {spotifyPlaylist.Tracks.Items.Count} Spotify tracks with Deezer...");
+                LoggingService.Instance.LogInfo($"Matching {allTrackItems.Count} Spotify tracks with Deezer...");
                 
                 int matchedCount = 0;
                 int failedCount = 0;
+                int currentIndex = 0;
                 
-                foreach (var item in spotifyPlaylist.Tracks.Items)
+                foreach (var item in allTrackItems)
                 {
+                    currentIndex++;
+                    
                     if (item?.Track == null)
                     {
                         LoggingService.Instance.LogWarning("Skipping null track item");
@@ -160,6 +204,16 @@ namespace DeeMusic.Desktop.Services
                     {
                         var artistName = item.Track.Artists?.FirstOrDefault()?.Name ?? "Unknown";
                         var trackName = item.Track.Name ?? "Unknown";
+                        
+                        // Report progress
+                        ImportProgressChanged?.Invoke(this, new ImportProgressEventArgs
+                        {
+                            CurrentTrack = $"{artistName} - {trackName}",
+                            CurrentIndex = currentIndex,
+                            TotalTracks = allTrackItems.Count,
+                            MatchedCount = matchedCount,
+                            FailedCount = failedCount
+                        });
                         
                         LoggingService.Instance.LogInfo($"Searching for: {artistName} - {trackName}");
                         
@@ -183,7 +237,7 @@ namespace DeeMusic.Desktop.Services
                     }
                 }
 
-                LoggingService.Instance.LogInfo($"Matching complete: {matchedCount} matched, {failedCount} failed out of {spotifyPlaylist.Tracks.Items.Count} total");
+                LoggingService.Instance.LogInfo($"Matching complete: {matchedCount} matched, {failedCount} failed out of {allTrackItems.Count} total");
             }
             else
             {
@@ -290,6 +344,9 @@ namespace DeeMusic.Desktop.Services
 
             [JsonPropertyName("items")]
             public List<SpotifyTrackItem>? Items { get; set; }
+
+            [JsonPropertyName("next")]
+            public string? Next { get; set; }
         }
 
         private class SpotifyTrackItem
@@ -330,5 +387,15 @@ namespace DeeMusic.Desktop.Services
             [JsonPropertyName("url")]
             public string? Url { get; set; }
         }
+    }
+
+    public class ImportProgressEventArgs : EventArgs
+    {
+        public string CurrentTrack { get; set; } = string.Empty;
+        public int CurrentIndex { get; set; }
+        public int TotalTracks { get; set; }
+        public int MatchedCount { get; set; }
+        public int FailedCount { get; set; }
+        public double ProgressPercentage => TotalTracks > 0 ? (double)CurrentIndex / TotalTracks * 100 : 0;
     }
 }

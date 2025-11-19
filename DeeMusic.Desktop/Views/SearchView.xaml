@@ -45,12 +45,54 @@
                      CanContentScroll="False"
                      PanningMode="VerticalOnly">
             <StackPanel>
-                <!-- Loading Indicator -->
+                <!-- Spotify Import Progress -->
+                <StackPanel HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           Visibility="{Binding ShowImportProgress, Converter={StaticResource BooleanToVisibilityConverter}}"
+                           Margin="32,100,32,32"
+                           MaxWidth="600">
+                    <materialDesign:PackIcon Kind="Spotify" 
+                                           Width="64" 
+                                           Height="64"
+                                           HorizontalAlignment="Center"
+                                           Foreground="#1DB954"
+                                           Margin="0,0,0,16"/>
+                    <TextBlock Text="Importing Spotify Playlist"
+                              FontSize="24"
+                              FontWeight="SemiBold"
+                              HorizontalAlignment="Center"
+                              Margin="0,0,0,8"/>
+                    <TextBlock Text="{Binding ImportStatusText}"
+                              FontSize="14"
+                              Foreground="{DynamicResource MaterialDesignBodyLight}"
+                              HorizontalAlignment="Center"
+                              TextWrapping="Wrap"
+                              TextAlignment="Center"
+                              Margin="0,0,0,16"/>
+                    
+                    <!-- Progress Bar -->
+                    <ProgressBar Value="{Binding ImportProgress, Mode=OneWay}"
+                                Maximum="100"
+                                Height="8"
+                                Margin="0,0,0,12"/>
+                    
+                    <!-- Current Track -->
+                    <TextBlock Text="{Binding ImportCurrentTrack}"
+                              FontSize="13"
+                              Foreground="{DynamicResource MaterialDesignBody}"
+                              HorizontalAlignment="Center"
+                              TextWrapping="Wrap"
+                              TextAlignment="Center"
+                              MaxWidth="500"
+                              FontStyle="Italic"/>
+                </StackPanel>
+                
+                <!-- Loading Indicator (for regular searches) -->
                 <ProgressBar Style="{StaticResource MaterialDesignCircularProgressBar}"
                             Width="48"
                             Height="48"
                             IsIndeterminate="True"
-                            Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            Visibility="{Binding IsSearching, Converter={StaticResource BooleanToVisibilityConverter}}"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"
                             Margin="0,100,0,0"/>

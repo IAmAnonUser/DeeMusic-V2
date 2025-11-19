@@ -26,6 +26,13 @@ namespace DeeMusic.Desktop.ViewModels
         private object? _selectedResult;
         private string? _currentViewAllCategory;
         private bool _isViewingAll;
+        private bool _isImportingPlaylist;
+        private string _importCurrentTrack = string.Empty;
+        private int _importProgress;
+        private int _importCurrentIndex;
+        private int _importTotalTracks;
+        private int _importMatchedCount;
+        private int _importFailedCount;
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -264,7 +271,7 @@ namespace DeeMusic.Desktop.ViewModels
         /// <summary>
         /// Gets whether to show the welcome message
         /// </summary>
-        public bool ShowWelcome => !IsSearching && !HasResults && string.IsNullOrWhiteSpace(SearchQuery) && !ShowConfigurationNeeded && !IsViewingAll;
+        public bool ShowWelcome => !IsSearching && !IsImportingPlaylist && !HasResults && string.IsNullOrWhiteSpace(SearchQuery) && !ShowConfigurationNeeded && !IsViewingAll;
 
         /// <summary>
         /// Gets whether to show configuration needed message
@@ -378,7 +385,7 @@ namespace DeeMusic.Desktop.ViewModels
         /// <summary>
         /// Gets whether to show search results UI (tabs and back button)
         /// </summary>
-        public bool ShowSearchResults => !string.IsNullOrWhiteSpace(SearchQuery) && !IsSearching && !ShowConfigurationNeeded && !IsViewingAll;
+        public bool ShowSearchResults => !string.IsNullOrWhiteSpace(SearchQuery) && !IsSearching && !IsImportingPlaylist && !ShowConfigurationNeeded && !IsViewingAll;
 
         /// <summary>
         /// Gets whether there are any search results
@@ -409,7 +416,137 @@ namespace DeeMusic.Desktop.ViewModels
         /// <summary>
         /// Gets whether currently loading
         /// </summary>
-        public bool IsLoading => IsSearching;
+        public bool IsLoading => IsSearching || IsImportingPlaylist;
+
+        /// <summary>
+        /// Gets whether currently importing a Spotify playlist
+        /// </summary>
+        public bool IsImportingPlaylist
+        {
+            get => _isImportingPlaylist;
+            private set
+            {
+                if (_isImportingPlaylist != value)
+                {
+                    _isImportingPlaylist = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(IsLoading));
+                    OnPropertyChanged(nameof(ShowImportProgress));
+                    OnPropertyChanged(nameof(ShowWelcome));
+                    OnPropertyChanged(nameof(ShowSearchResults));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets whether to show import progress UI
+        /// </summary>
+        public bool ShowImportProgress => IsImportingPlaylist;
+
+        /// <summary>
+        /// Gets the current track being imported
+        /// </summary>
+        public string ImportCurrentTrack
+        {
+            get => _importCurrentTrack;
+            private set
+            {
+                if (_importCurrentTrack != value)
+                {
+                    _importCurrentTrack = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets the import progress percentage (0-100)
+        /// </summary>
+        public int ImportProgress
+        {
+            get => _importProgress;
+            private set
+            {
+                if (_importProgress != value)
+                {
+                    _importProgress = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets the current import index
+        /// </summary>
+        public int ImportCurrentIndex
+        {
+            get => _importCurrentIndex;
+            private set
+            {
+                if (_importCurrentIndex != value)
+                {
+                    _importCurrentIndex = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(ImportStatusText));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets the total tracks to import
+        /// </summary>
+        public int ImportTotalTracks
+        {
+            get => _importTotalTracks;
+            private set
+            {
+                if (_importTotalTracks != value)
+                {
+                    _importTotalTracks = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(ImportStatusText));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets the number of matched tracks
+        /// </summary>
+        public int ImportMatchedCount
+        {
+            get => _importMatchedCount;
+            private set
+            {
+                if (_importMatchedCount != value)
+                {
+                    _importMatchedCount = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(ImportStatusText));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets the number of failed tracks
+        /// </summary>
+        public int ImportFailedCount
+        {
+            get => _importFailedCount;
+            private set
+            {
+                if (_importFailedCount != value)
+                {
+                    _importFailedCount = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(ImportStatusText));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets the import status text
+        /// </summary>
+        public string ImportStatusText => $"Matching tracks: {ImportCurrentIndex}/{ImportTotalTracks} (✓ {ImportMatchedCount} | ✗ {ImportFailedCount})";
 
         /// <summary>
         /// Gets the search results based on the selected search type
@@ -529,6 +666,9 @@ namespace DeeMusic.Desktop.ViewModels
             _service = service ?? throw new ArgumentNullException(nameof(service));
             _spotifyService = new SpotifyService(service);
 
+            // Subscribe to Spotify import progress
+            _spotifyService.ImportProgressChanged += OnImportProgressChanged;
+
             // Initialize commands
             SearchCommand = new AsyncRelayCommand(ExecuteSearchAsync, CanExecuteSearch);
             DownloadTrackCommand = new AsyncRelayCommand<Track>(DownloadTrackAsync);
@@ -549,6 +689,20 @@ namespace DeeMusic.Desktop.ViewModels
 
             // Check configuration status
             CheckConfiguration();
+        }
+
+        private void OnImportProgressChanged(object? sender, ImportProgressEventArgs e)
+        {
+            // Update UI on the UI thread
+            System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+            {
+                ImportCurrentTrack = e.CurrentTrack;
+                ImportProgress = (int)e.ProgressPercentage;
+                ImportCurrentIndex = e.CurrentIndex;
+                ImportTotalTracks = e.TotalTracks;
+                ImportMatchedCount = e.MatchedCount;
+                ImportFailedCount = e.FailedCount;
+            });
         }
 
         /// <summary>
@@ -648,7 +802,7 @@ namespace DeeMusic.Desktop.ViewModels
         /// </summary>
         private async Task ImportSpotifyPlaylistAsync(string spotifyUrl)
         {
-            IsSearching = true;
+            IsImportingPlaylist = true;
             
             try
             {
@@ -662,13 +816,13 @@ namespace DeeMusic.Desktop.ViewModels
                     LoggingService.Instance.LogInfo($"Successfully imported playlist: {playlist.Title} with {playlist.Tracks?.Data?.Count ?? 0} tracks");
                     NotificationService.Instance.ShowSuccess($"Imported '{playlist.Title}' ({playlist.Tracks?.Data?.Count ?? 0} tracks matched)");
                     
-                    // Clear search query and results before navigating
+                    // Navigate to playlist detail view first
+                    NavigateToPlaylistRequested?.Invoke(this, playlist);
+                    
+                    // Then clear search query and results
                     // This ensures when user presses back, they return to a clean search view
                     SearchQuery = string.Empty;
                     ClearResults();
-                    
-                    // Navigate to playlist detail view
-                    NavigateToPlaylistRequested?.Invoke(this, playlist);
                 }
                 else
                 {
@@ -690,7 +844,7 @@ namespace DeeMusic.Desktop.ViewModels
             }
             finally
             {
-                IsSearching = false;
+                IsImportingPlaylist = false;
             }
         }
         
