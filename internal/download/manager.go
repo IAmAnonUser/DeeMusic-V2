@@ -993,19 +993,40 @@ func (m *Manager) downloadAlbumJob(ctx context.Context, job *Job) error {
 	}
 	
 	albumItem, err := m.queueStore.GetByID(job.ID)
-	if err != nil {
+	if err != nil || albumItem == nil {
+		// Album item doesn't exist - create it now
 		if logFile, err2 := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err2 == nil {
-			fmt.Fprintf(logFile, "[%s] ERROR: Failed to get album item %s: %v\n", time.Now().Format("2006-01-02 15:04:05"), job.ID, err)
+			fmt.Fprintf(logFile, "[%s] Album item %s not found, creating it now\n", time.Now().Format("2006-01-02 15:04:05"), job.ID)
 			logFile.Close()
 		}
-	} else if albumItem == nil {
-		if logFile, err2 := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err2 == nil {
-			fmt.Fprintf(logFile, "[%s] ERROR: Album item %s is nil\n", time.Now().Format("2006-01-02 15:04:05"), job.ID)
-			logFile.Close()
+		
+		albumItem = &store.QueueItem{
+			ID:              job.ID,
+			Type:            "album",
+			Title:           album.Title,
+			Artist:          albumArtistName,
+			Status:          "downloading",
+			Progress:        0,
+			TotalTracks:     totalTracks,
+			CompletedTracks: 0,
+		}
+		
+		if addErr := m.queueStore.Add(albumItem); addErr != nil {
+			if logFile, err2 := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err2 == nil {
+				fmt.Fprintf(logFile, "[%s] ERROR: Failed to create album item %s: %v\n", time.Now().Format("2006-01-02 15:04:05"), job.ID, addErr)
+				logFile.Close()
+			}
+		} else {
+			if logFile, err2 := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err2 == nil {
+				fmt.Fprintf(logFile, "[%s] Successfully created album item %s with %d total tracks\n", time.Now().Format("2006-01-02 15:04:05"), job.ID, totalTracks)
+				logFile.Close()
+			}
 		}
 	} else {
+		// Album item exists - update it
 		albumItem.TotalTracks = totalTracks
 		albumItem.CompletedTracks = 0
+		albumItem.Status = "downloading"
 		if updateErr := m.queueStore.Update(albumItem); updateErr != nil {
 			if logFile, err2 := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err2 == nil {
 				fmt.Fprintf(logFile, "[%s] ERROR: Failed to update album item %s: %v\n", time.Now().Format("2006-01-02 15:04:05"), job.ID, updateErr)
@@ -1334,6 +1355,32 @@ func (m *Manager) processResults() {
 					time.Sleep(delay)
 					m.workerPool.Submit(job)
 				}()
+			} else {
+				// Max retries exceeded - record failed track and update parent progress
+				if item.ParentID != "" {
+					if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+						fmt.Fprintf(logFile, "[%s] Track %s permanently failed after %d retries, recording failure for parent %s\n", 
+							time.Now().Format("2006-01-02 15:04:05"), item.ID, item.RetryCount, item.ParentID)
+						logFile.Close()
+					}
+					
+					// Record the failed track with details
+					if err := m.queueStore.AddFailedTrack(
+						item.ParentID,
+						item.ID,
+						item.Title,
+						item.Artist,
+						item.ErrorMessage,
+						item.RetryCount,
+					); err != nil {
+						if logFile, err2 := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err2 == nil {
+							fmt.Fprintf(logFile, "[%s] Failed to record failed track: %v\n", time.Now().Format("2006-01-02 15:04:05"), err)
+							logFile.Close()
+						}
+					}
+					
+					m.updateParentProgress(item.ParentID)
+				}
 			}
 		}
 	}
@@ -2504,14 +2551,17 @@ func (m *Manager) updateParentProgress(parentID string) {
 	// Count completed child tracks
 	completedCount := m.queueStore.CountCompletedChildren(parentID)
 	
+	// Count finished tracks (completed + permanently failed)
+	finishedCount := m.queueStore.CountFinishedChildren(parentID, 3) // maxRetries = 3
+	
 	// Update parent
 	parent.CompletedTracks = completedCount
 	if parent.TotalTracks > 0 {
 		parent.Progress = (completedCount * 100) / parent.TotalTracks
 	}
 	
-	// Mark parent as completed if all tracks are done
-	if completedCount >= parent.TotalTracks && parent.TotalTracks > 0 {
+	// Mark parent as completed if all tracks are done (including failed ones)
+	if finishedCount >= parent.TotalTracks && parent.TotalTracks > 0 {
 		if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
 			fmt.Fprintf(logFile, "[%s] Marking album %s as completed: %d/%d tracks\n", time.Now().Format("2006-01-02 15:04:05"), parentID, completedCount, parent.TotalTracks)
 			logFile.Close()

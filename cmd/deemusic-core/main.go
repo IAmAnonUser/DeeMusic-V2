@@ -991,6 +991,29 @@ func GetQueueStats() *C.char {
 	return C.CString(string(jsonData))
 }
 
+//export GetFailedTracks
+func GetFailedTracks(parentID *C.char) *C.char {
+	if !checkInitialized() {
+		return C.CString(`[]`)
+	}
+	
+	goParentID := C.GoString(parentID)
+	
+	tracks, err := queueStore.GetFailedTracks(goParentID)
+	if err != nil {
+		logDebug("Failed to get failed tracks for %s: %v", goParentID, err)
+		return C.CString(`[]`)
+	}
+	
+	jsonData, err := json.Marshal(tracks)
+	if err != nil {
+		logDebug("Failed to marshal failed tracks: %v", err)
+		return C.CString(`[]`)
+	}
+	
+	return C.CString(string(jsonData))
+}
+
 //export PauseDownload
 func PauseDownload(itemID *C.char) C.int {
 	if !checkInitialized() {
@@ -1057,9 +1080,50 @@ func RetryDownload(itemID *C.char) C.int {
 		return -2
 	}
 	
-	item.Status = "pending"
-	item.ErrorMessage = ""
-	item.Progress = 0
+	// For albums/playlists with partial failures, retry only the failed tracks
+	if (item.Type == "album" || item.Type == "playlist") && item.Status == "completed" && item.CompletedTracks < item.TotalTracks {
+		logDebug("Retrying partial failure for %s: %d/%d tracks completed", item.ID, item.CompletedTracks, item.TotalTracks)
+		
+		// Get all failed child tracks
+		failedTracks, err := queueStore.GetByStatus("failed", 0, 1000)
+		if err != nil {
+			logDebug("Failed to get failed tracks: %v", err)
+			return -4
+		}
+		
+		// Reset failed tracks that belong to this parent
+		retriedCount := 0
+		for _, track := range failedTracks {
+			if track.ParentID == goItemID {
+				track.Status = "pending"
+				track.ErrorMessage = ""
+				track.Progress = 0
+				track.RetryCount = 0
+				
+				if err := queueStore.Update(track); err != nil {
+					logDebug("Failed to reset track %s: %v", track.ID, err)
+				} else {
+					retriedCount++
+				}
+			}
+		}
+		
+		// Clear the failed tracks records so they can be re-recorded if they fail again
+		if err := queueStore.ClearFailedTracks(goItemID); err != nil {
+			logDebug("Failed to clear failed tracks records: %v", err)
+		}
+		
+		// Reset parent to downloading so it can track the retried tracks
+		item.Status = "downloading"
+		item.ErrorMessage = ""
+		
+		logDebug("Reset %d failed tracks for %s", retriedCount, item.ID)
+	} else {
+		// For single tracks or fully failed items, reset normally
+		item.Status = "pending"
+		item.ErrorMessage = ""
+		item.Progress = 0
+	}
 	
 	err = queueStore.Update(item)
 	if err != nil {

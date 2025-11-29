@@ -415,12 +415,42 @@ namespace DeeMusic.Desktop.Services
                     var ptr = GoBackend.GetQueue(offset, limit, filter);
                     var json = GoBackend.PtrToStringAndFree(ptr);
 
-                    LoggingService.Instance.LogInfo($"GetQueue returned JSON (length: {json?.Length ?? 0}): {json?.Substring(0, Math.Min(200, json?.Length ?? 0))}...");
+                    LoggingService.Instance.LogInfo($"GetQueue returned JSON (length: {json?.Length ?? 0})");
 
                     if (string.IsNullOrEmpty(json))
                     {
                         LoggingService.Instance.LogWarning("GetQueue returned null or empty JSON");
                         return default;
+                    }
+
+                    // Log completed items with their track counts for debugging
+                    if (json.Contains("\"status\":\"completed\""))
+                    {
+                        // Find and log completed album data
+                        try
+                        {
+                            var tempDoc = System.Text.Json.JsonDocument.Parse(json);
+                            if (tempDoc.RootElement.TryGetProperty("items", out var items))
+                            {
+                                foreach (var item in items.EnumerateArray())
+                                {
+                                    if (item.TryGetProperty("status", out var status) && status.GetString() == "completed")
+                                    {
+                                        var id = item.TryGetProperty("id", out var idProp) ? idProp.GetString() : "?";
+                                        var title = item.TryGetProperty("title", out var titleProp) ? titleProp.GetString() : "?";
+                                        var type = item.TryGetProperty("type", out var typeProp) ? typeProp.GetString() : "?";
+                                        var completed = item.TryGetProperty("completed_tracks", out var compProp) ? compProp.GetInt32() : -1;
+                                        var total = item.TryGetProperty("total_tracks", out var totalProp) ? totalProp.GetInt32() : -1;
+                                        
+                                        LoggingService.Instance.LogInfo($"[RAW JSON] Completed item: ID={id}, Title={title}, Type={type}, CompletedTracks={completed}, TotalTracks={total}");
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            LoggingService.Instance.LogWarning($"Failed to parse JSON for logging: {ex.Message}");
+                        }
                     }
 
                     var result = DeserializeJson<T>(json);
@@ -448,6 +478,28 @@ namespace DeeMusic.Desktop.Services
                         return null;
 
                     return DeserializeJson<QueueStats>(json);
+                });
+            });
+        }
+
+        /// <summary>
+        /// Get failed tracks for an album/playlist
+        /// </summary>
+        public async Task<List<FailedTrack>?> GetFailedTracksAsync(string parentId)
+        {
+            EnsureInitialized();
+
+            return await ExecuteWithRetryAsync(async () =>
+            {
+                return await Task.Run(() =>
+                {
+                    var ptr = GoBackend.GetFailedTracks(parentId);
+                    var json = GoBackend.PtrToStringAndFree(ptr);
+
+                    if (string.IsNullOrEmpty(json))
+                        return new List<FailedTrack>();
+
+                    return DeserializeJson<List<FailedTrack>>(json) ?? new List<FailedTrack>();
                 });
             });
         }

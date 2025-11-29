@@ -786,3 +786,77 @@ func (qs *QueueStore) CountFinishedChildren(parentID string, maxRetries int) int
 	
 	return count
 }
+
+// FailedTrack represents a failed track with error details
+type FailedTrack struct {
+	ID           int       `json:"id"`
+	ParentID     string    `json:"parent_id"`
+	TrackID      string    `json:"track_id"`
+	TrackTitle   string    `json:"track_title"`
+	TrackArtist  string    `json:"track_artist"`
+	ErrorMessage string    `json:"error_message"`
+	RetryCount   int       `json:"retry_count"`
+	FailedAt     time.Time `json:"failed_at"`
+}
+
+// AddFailedTrack records a failed track
+func (qs *QueueStore) AddFailedTrack(parentID, trackID, title, artist, errorMsg string, retryCount int) error {
+	query := `
+		INSERT INTO failed_tracks (parent_id, track_id, track_title, track_artist, error_message, retry_count)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`
+	
+	_, err := qs.db.Exec(query, parentID, trackID, title, artist, errorMsg, retryCount)
+	if err != nil {
+		return fmt.Errorf("failed to add failed track: %w", err)
+	}
+	
+	return nil
+}
+
+// GetFailedTracks retrieves all failed tracks for a parent (album/playlist)
+func (qs *QueueStore) GetFailedTracks(parentID string) ([]*FailedTrack, error) {
+	query := `
+		SELECT id, parent_id, track_id, track_title, track_artist, error_message, retry_count, failed_at
+		FROM failed_tracks
+		WHERE parent_id = ?
+		ORDER BY failed_at DESC
+	`
+	
+	rows, err := qs.db.Query(query, parentID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get failed tracks: %w", err)
+	}
+	defer rows.Close()
+	
+	var tracks []*FailedTrack
+	for rows.Next() {
+		track := &FailedTrack{}
+		err := rows.Scan(
+			&track.ID,
+			&track.ParentID,
+			&track.TrackID,
+			&track.TrackTitle,
+			&track.TrackArtist,
+			&track.ErrorMessage,
+			&track.RetryCount,
+			&track.FailedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan failed track: %w", err)
+		}
+		tracks = append(tracks, track)
+	}
+	
+	return tracks, nil
+}
+
+// ClearFailedTracks removes all failed track records for a parent
+func (qs *QueueStore) ClearFailedTracks(parentID string) error {
+	query := "DELETE FROM failed_tracks WHERE parent_id = ?"
+	_, err := qs.db.Exec(query, parentID)
+	if err != nil {
+		return fmt.Errorf("failed to clear failed tracks: %w", err)
+	}
+	return nil
+}

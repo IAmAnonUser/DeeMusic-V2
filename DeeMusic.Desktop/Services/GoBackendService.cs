@@ -183,6 +183,14 @@ namespace DeeMusic.Desktop.Services
         public static extern IntPtr GetQueueStats();
 
         /// <summary>
+        /// Get failed tracks for an album/playlist
+        /// </summary>
+        /// <param name="parentID">Parent album or playlist ID</param>
+        /// <returns>Pointer to JSON string (must be freed with FreeString)</returns>
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        public static extern IntPtr GetFailedTracks(string parentID);
+
+        /// <summary>
         /// Pause a download
         /// </summary>
         /// <param name="itemID">Queue item ID</param>
@@ -296,8 +304,8 @@ namespace DeeMusic.Desktop.Services
 
             try
             {
-                // Marshal the string from unmanaged memory
-                string? result = Marshal.PtrToStringAnsi(ptr);
+                // Marshal the string from unmanaged memory as UTF-8
+                string? result = Marshal.PtrToStringUTF8(ptr);
                 return result;
             }
             finally

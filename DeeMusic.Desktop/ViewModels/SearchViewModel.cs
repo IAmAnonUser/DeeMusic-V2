@@ -804,6 +804,12 @@ namespace DeeMusic.Desktop.ViewModels
         {
             IsImportingPlaylist = true;
             
+            // Set cursor to normal (not wait) - we have our own progress UI
+            System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+            {
+                System.Windows.Input.Mouse.OverrideCursor = null;
+            });
+            
             try
             {
                 LoggingService.Instance.LogInfo($"Importing Spotify playlist: {spotifyUrl}");
@@ -845,6 +851,12 @@ namespace DeeMusic.Desktop.ViewModels
             finally
             {
                 IsImportingPlaylist = false;
+                
+                // Ensure cursor is reset
+                System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+                {
+                    System.Windows.Input.Mouse.OverrideCursor = null;
+                });
             }
         }
         

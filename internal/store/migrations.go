@@ -103,6 +103,27 @@ CREATE INDEX IF NOT EXISTS idx_queue_status_progress ON queue_items(status, prog
 CREATE INDEX IF NOT EXISTS idx_history_composite ON download_history(downloaded_at DESC, track_id);
 `,
 	},
+	{
+		Version: 4,
+		Name:    "add_failed_tracks_table",
+		Up: `
+-- Failed tracks table to track which tracks failed and why
+CREATE TABLE IF NOT EXISTS failed_tracks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    parent_id TEXT NOT NULL,
+    track_id TEXT NOT NULL,
+    track_title TEXT NOT NULL,
+    track_artist TEXT,
+    error_message TEXT NOT NULL,
+    retry_count INTEGER DEFAULT 0,
+    failed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (parent_id) REFERENCES queue_items(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_failed_tracks_parent ON failed_tracks(parent_id);
+CREATE INDEX IF NOT EXISTS idx_failed_tracks_date ON failed_tracks(failed_at DESC);
+`,
+	},
 }
 
 // RunMigrations executes all pending migrations

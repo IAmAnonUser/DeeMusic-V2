@@ -65,7 +65,7 @@ namespace DeeMusic.Desktop.Services
                     if (resultPtr == IntPtr.Zero)
                         return null;
 
-                    string json = Marshal.PtrToStringAnsi(resultPtr) ?? "{}";
+                    string json = Marshal.PtrToStringUTF8(resultPtr) ?? "{}";
                     GoBackend.FreeString(resultPtr);
 
                     var result = JsonSerializer.Deserialize<PythonInstallationInfo>(json);
@@ -92,7 +92,7 @@ namespace DeeMusic.Desktop.Services
                     if (resultPtr == IntPtr.Zero)
                         return null;
 
-                    string json = Marshal.PtrToStringAnsi(resultPtr) ?? "{}";
+                    string json = Marshal.PtrToStringUTF8(resultPtr) ?? "{}";
                     GoBackend.FreeString(resultPtr);
 
                     var stats = JsonSerializer.Deserialize<MigrationStats>(json);
@@ -120,7 +120,7 @@ namespace DeeMusic.Desktop.Services
                     {
                         try
                         {
-                            string message = Marshal.PtrToStringAnsi(messagePtr) ?? "";
+                            string message = Marshal.PtrToStringUTF8(messagePtr) ?? "";
                             
                             // Raise progress event on UI thread
                             System.Windows.Application.Current?.Dispatcher.Invoke(() =>
@@ -149,7 +149,7 @@ namespace DeeMusic.Desktop.Services
                         };
                     }
 
-                    string json = Marshal.PtrToStringAnsi(resultPtr) ?? "{}";
+                    string json = Marshal.PtrToStringUTF8(resultPtr) ?? "{}";
                     GoBackend.FreeString(resultPtr);
 
                     var result = JsonSerializer.Deserialize<MigrationResult>(json);

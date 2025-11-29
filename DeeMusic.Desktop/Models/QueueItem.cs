@@ -86,8 +86,17 @@ namespace DeeMusic.Desktop.Models
             {
                 if (_status != value)
                 {
-                    Services.LoggingService.Instance.LogInfo($"Status changing for {Title}: {_status} -> {value}");
                     _status = value;
+                    
+                    // Log when album is marked completed - DETAILED DEBUG
+                    if (IsAlbumOrPlaylist && value == "completed")
+                    {
+                        var isPartial = CompletedTracks < TotalTracks;
+                        var expectedColor = isPartial ? "ORANGE (partial)" : "GREEN (full success)";
+                        Services.LoggingService.Instance.LogInfo($"Album '{Title}' Status->completed: CompletedTracks={CompletedTracks}, TotalTracks={TotalTracks}, IsPartialSuccess={isPartial}, ExpectedColor={expectedColor}");
+                    }
+                    
+                    // Fire IsCompleted FIRST so IsPartialSuccess can use it
                     OnPropertyChanged();
                     OnPropertyChanged(nameof(IsPending));
                     OnPropertyChanged(nameof(IsDownloading));
@@ -100,6 +109,23 @@ namespace DeeMusic.Desktop.Models
                     OnPropertyChanged(nameof(StatusText));
                     OnPropertyChanged(nameof(DisplayName));
                     OnPropertyChanged(nameof(DisplayTitle));
+                    
+                    // Fire HasFailedTracks and IsPartialSuccess BEFORE background color
+                    OnPropertyChanged(nameof(HasFailedTracks));
+                    OnPropertyChanged(nameof(IsPartialSuccess));
+                    
+                    // NOTE: Do NOT call UpdateComputedBackgroundColor here!
+                    // During JSON deserialization, Status may be set before TotalTracks/CompletedTracks
+                    // which would cause incorrect color calculation. Call it explicitly after all props are set.
+                    
+                    OnPropertyChanged(nameof(ItemBackgroundColor));
+                    OnPropertyChanged(nameof(ItemBorderColor));
+                    OnPropertyChanged(nameof(ShowErrorButton));
+                    OnPropertyChanged(nameof(ErrorSummary));
+                    OnPropertyChanged(nameof(StatusColor));
+                    OnPropertyChanged(nameof(StatusBadgeText));
+                    OnPropertyChanged(nameof(ShowStatusBadge));
+                    OnPropertyChanged(nameof(TrackProgressText));
                 }
             }
         }
@@ -121,6 +147,12 @@ namespace DeeMusic.Desktop.Models
                         Services.LoggingService.Instance.LogWarning($"Progress DECREASED for {Title}: {_progress}% -> {value}% (called from {caller})");
                     }
                     
+                    // Log when album is marked completed with partial progress
+                    if (IsAlbumOrPlaylist && value < 100 && Status == "completed")
+                    {
+                        Services.LoggingService.Instance.LogInfo($"Album '{Title}' marked completed with Progress={value}%, CompletedTracks={CompletedTracks}/{TotalTracks}");
+                    }
+                    
                     _progress = value;
                     OnPropertyChanged();
                 }
@@ -140,6 +172,10 @@ namespace DeeMusic.Desktop.Models
                 {
                     _errorMessage = value;
                     OnPropertyChanged();
+                    OnPropertyChanged(nameof(HasFailedTracks));
+                    OnPropertyChanged(nameof(ItemBackgroundColor));
+                    OnPropertyChanged(nameof(ItemBorderColor));
+                    OnPropertyChanged(nameof(ShowErrorButton));
                 }
             }
         }
@@ -198,7 +234,6 @@ namespace DeeMusic.Desktop.Models
             {
                 if (_totalTracks != value)
                 {
-                    Services.LoggingService.Instance.LogInfo($"TotalTracks changing for {Title}: {_totalTracks} -> {value}");
                     _totalTracks = value;
                     OnPropertyChanged();
                     OnPropertyChanged(nameof(IsAlbumOrPlaylist));
@@ -218,13 +253,25 @@ namespace DeeMusic.Desktop.Models
             {
                 if (_completedTracks != value)
                 {
-                    Services.LoggingService.Instance.LogInfo($"CompletedTracks changing for {Title}: {_completedTracks} -> {value}");
                     _completedTracks = value;
                     OnPropertyChanged();
                     OnPropertyChanged(nameof(TrackProgressText));
                     OnPropertyChanged(nameof(DisplayTitle));
                     OnPropertyChanged(nameof(DisplayName));
                     OnPropertyChanged(nameof(StatusText));
+                    OnPropertyChanged(nameof(HasFailedTracks));
+                    OnPropertyChanged(nameof(IsPartialSuccess));
+                    
+                    // NOTE: Do NOT call UpdateComputedBackgroundColor here!
+                    // Call it explicitly after all properties are set to avoid race conditions.
+                    
+                    OnPropertyChanged(nameof(ItemBackgroundColor));
+                    OnPropertyChanged(nameof(ItemBorderColor));
+                    OnPropertyChanged(nameof(ShowErrorButton));
+                    OnPropertyChanged(nameof(ErrorSummary));
+                    OnPropertyChanged(nameof(StatusColor));
+                    OnPropertyChanged(nameof(StatusBadgeText));
+                    OnPropertyChanged(nameof(ShowStatusBadge));
                 }
             }
         }
@@ -238,7 +285,7 @@ namespace DeeMusic.Desktop.Models
 
         public bool CanPause => IsDownloading;
         public bool CanResume => IsPaused || IsFailed;
-        public bool CanRetry => IsFailed;
+        public bool CanRetry => IsFailed || IsPartialSuccess;
 
         /// <summary>
         /// Full display name with artist and track progress
@@ -303,10 +350,175 @@ namespace DeeMusic.Desktop.Models
             {
                 if (!IsAlbumOrPlaylist)
                     return string.Empty;
-                    
-                return $"\n{CompletedTracks:00}/{TotalTracks:00}";
+                
+                var suffix = IsPartialSuccess ? " ⚠️" : (IsCompleted ? " ✓" : "");
+                return $"{CompletedTracks}/{TotalTracks} tracks{suffix}";
             }
         }
+        
+        /// <summary>
+        /// Whether this item has failed tracks (for albums/playlists)
+        /// Detects partial failures where some tracks completed but not all
+        /// </summary>
+        public bool HasFailedTracks
+        {
+            get
+            {
+                // Single track failure
+                if (!IsAlbumOrPlaylist && IsFailed)
+                    return true;
+                    
+                // Album/playlist with partial failure: completed but not all tracks succeeded
+                if (IsAlbumOrPlaylist && IsCompleted && CompletedTracks < TotalTracks)
+                    return true;
+                    
+                // Album/playlist with error message
+                if (IsAlbumOrPlaylist && !string.IsNullOrEmpty(ErrorMessage))
+                    return true;
+                    
+                return false;
+            }
+        }
+        
+        /// <summary>
+        /// Whether this is a partial success (some tracks failed)
+        /// </summary>
+        public bool IsPartialSuccess => IsAlbumOrPlaylist && IsCompleted && CompletedTracks < TotalTracks;
+        
+        // Static frozen brushes for performance
+        private static readonly System.Windows.Media.SolidColorBrush PartialSuccessBrush;
+        private static readonly System.Windows.Media.SolidColorBrush FailedBrush;
+        private static readonly System.Windows.Media.SolidColorBrush CompletedBrush;
+        private static readonly System.Windows.Media.SolidColorBrush TransparentBrush;
+        
+        static QueueItem()
+        {
+            PartialSuccessBrush = new System.Windows.Media.SolidColorBrush(
+                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#FEF3C7")!);
+            FailedBrush = new System.Windows.Media.SolidColorBrush(
+                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#FEE2E2")!);
+            CompletedBrush = new System.Windows.Media.SolidColorBrush(
+                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#E8F5E9")!);
+            TransparentBrush = System.Windows.Media.Brushes.Transparent;
+            
+            PartialSuccessBrush.Freeze();
+            FailedBrush.Freeze();
+            CompletedBrush.Freeze();
+        }
+        
+        // Backing field for background brush
+        private System.Windows.Media.Brush _computedBackgroundBrush = System.Windows.Media.Brushes.Transparent;
+        
+        /// <summary>
+        /// Background brush for WPF binding.
+        /// </summary>
+        public System.Windows.Media.Brush ComputedBackgroundColor
+        {
+            get => _computedBackgroundBrush;
+            private set
+            {
+                if (_computedBackgroundBrush != value)
+                {
+                    _computedBackgroundBrush = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+        
+        /// <summary>
+        /// Recalculates and updates the background color based on current state.
+        /// </summary>
+        public void UpdateComputedBackgroundColor()
+        {
+            if (IsPartialSuccess)
+                ComputedBackgroundColor = PartialSuccessBrush;
+            else if (IsFailed)
+                ComputedBackgroundColor = FailedBrush;
+            else if (IsCompleted)
+                ComputedBackgroundColor = CompletedBrush;
+            else
+                ComputedBackgroundColor = TransparentBrush;
+        }
+        
+        // Keep string version for compatibility
+        public string ItemBackgroundColor => IsPartialSuccess ? "#FEF3C7" : (HasFailedTracks ? "#FEE2E2" : (IsCompleted ? "#E8F5E9" : "Transparent"));
+        
+        /// <summary>
+        /// Border color for items with errors
+        /// </summary>
+        public string ItemBorderColor
+        {
+            get
+            {
+                if (HasFailedTracks && IsPartialSuccess)
+                    return "#F59E0B"; // Orange border for partial success
+                if (HasFailedTracks)
+                    return "#EF4444"; // Red border for complete failure
+                return "Transparent";
+            }
+        }
+        
+        /// <summary>
+        /// Whether to show the error details button
+        /// </summary>
+        public bool ShowErrorButton => HasFailedTracks || IsFailed;
+        
+        /// <summary>
+        /// Error summary for display
+        /// </summary>
+        public string ErrorSummary
+        {
+            get
+            {
+                if (IsPartialSuccess)
+                {
+                    int failedCount = TotalTracks - CompletedTracks;
+                    return $"{failedCount} of {TotalTracks} tracks failed to download";
+                }
+                if (!string.IsNullOrEmpty(ErrorMessage))
+                    return ErrorMessage;
+                if (IsFailed)
+                    return "Download failed";
+                return string.Empty;
+            }
+        }
+        
+        public bool CanCancel => IsDownloading || IsPending;
+        public bool ShowStatusBadge => IsFailed || IsCompleted || IsPartialSuccess;
+        
+        public string StatusColor
+        {
+            get
+            {
+                if (IsPartialSuccess)
+                    return "#F59E0B"; // Orange for partial success
+                return Status switch
+                {
+                    "completed" => "#10b981", // Green
+                    "failed" => "#ef4444",    // Red
+                    _ => "#6b7280"            // Gray
+                };
+            }
+        }
+        
+        public string StatusBadgeText
+        {
+            get
+            {
+                if (IsPartialSuccess)
+                    return "Partial";
+                return Status switch
+                {
+                    "completed" => "Completed",
+                    "failed" => "Failed",
+                    _ => Status
+                };
+            }
+        }
+        
+        public string CoverUrl { get; set; } = string.Empty;
+        public string Speed { get; set; } = string.Empty;
+        public string ETA { get; set; } = string.Empty;
 
         private static string FormatBytes(long bytes)
         {

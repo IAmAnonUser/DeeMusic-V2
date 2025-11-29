@@ -29,6 +29,11 @@ namespace DeeMusic.Desktop.ViewModels
         private TrayService? _trayService;
         private int _totalItems;
         private int _currentPage = 1;
+        
+        // Periodic refresh timer to keep UI in sync with backend
+        private System.Windows.Threading.DispatcherTimer? _refreshTimer;
+        private const int RefreshIntervalSeconds = 3; // Refresh every 3 seconds when downloads are active
+        private bool _hasActiveDownloads;
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -298,6 +303,160 @@ namespace DeeMusic.Desktop.ViewModels
             _service.ProgressUpdated += OnProgressUpdated;
             _service.StatusChanged += OnStatusChanged;
             _service.QueueStatsUpdated += OnQueueStatsUpdated;
+            
+            // Initialize periodic refresh timer
+            InitializeRefreshTimer();
+        }
+        
+        /// <summary>
+        /// Initialize the periodic refresh timer
+        /// </summary>
+        private void InitializeRefreshTimer()
+        {
+            _refreshTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(RefreshIntervalSeconds)
+            };
+            _refreshTimer.Tick += OnRefreshTimerTick;
+            // Timer will be started when we detect active downloads
+        }
+        
+        /// <summary>
+        /// Handle refresh timer tick - poll backend for updates
+        /// </summary>
+        private async void OnRefreshTimerTick(object? sender, EventArgs e)
+        {
+            // Skip if already loading
+            if (IsLoading)
+                return;
+                
+            try
+            {
+                // Get fresh queue stats
+                var stats = await _service.GetQueueStatsAsync();
+                if (stats != null)
+                {
+                    QueueStats = stats;
+                    OnPropertyChanged(nameof(QueueStats));
+                    OnPropertyChanged(nameof(Stats));
+                    
+                    // Check if there are active downloads
+                    _hasActiveDownloads = stats.Downloading > 0 || stats.Pending > 0;
+                    
+                    // Stop timer if no active downloads
+                    if (!_hasActiveDownloads && _refreshTimer != null)
+                    {
+                        _refreshTimer.Stop();
+                    }
+                }
+                
+                // Refresh the current page to get updated progress
+                if (_hasActiveDownloads)
+                {
+                    await RefreshCurrentPageAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Refresh timer tick failed: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Refresh the current page without full reload
+        /// </summary>
+        private async Task RefreshCurrentPageAsync()
+        {
+            try
+            {
+                var filter = StatusFilter == "all" ? null : StatusFilter;
+                var response = await _service.GetQueueAsync<QueueResponse>(
+                    _currentOffset, PageSize * 10, filter);
+
+                if (response?.Items != null)
+                {
+                    var albumItems = response.Items
+                        .Where(i => i.Type == "album" || i.Type == "playlist")
+                        .OrderBy(i => i.CreatedAt)
+                        .Take(PageSize)
+                        .ToList();
+                    
+                    await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+                    {
+                        // Update existing items with fresh data
+                        foreach (var newItem in albumItems)
+                        {
+                            var existingIndex = -1;
+                            for (int i = 0; i < QueueItems.Count; i++)
+                            {
+                                if (QueueItems[i].Id == newItem.Id)
+                                {
+                                    existingIndex = i;
+                                    break;
+                                }
+                            }
+                            
+                            if (existingIndex >= 0)
+                            {
+                                var existing = QueueItems[existingIndex];
+                                
+                                // Update track counts BEFORE status so IsPartialSuccess is calculated correctly
+                                existing.TotalTracks = newItem.TotalTracks;
+                                existing.CompletedTracks = newItem.CompletedTracks;
+                                existing.Progress = newItem.Progress;
+                                existing.ErrorMessage = newItem.ErrorMessage;
+                                existing.Status = newItem.Status;
+                                existing.UpdateComputedBackgroundColor();
+                                
+                                // Replace completed items to force WPF refresh
+                                if (existing.Status == "completed")
+                                {
+                                    newItem.UpdateComputedBackgroundColor();
+                                    QueueItems[existingIndex] = newItem;
+                                }
+                            }
+                            else if (!QueueItems.Any(q => q.Id == newItem.Id))
+                            {
+                                // Add new item - make sure background is set
+                                newItem.UpdateComputedBackgroundColor();
+                                QueueItems.Add(newItem);
+                            }
+                        }
+                        
+                        // Remove items that no longer exist
+                        var newIds = new HashSet<string>(albumItems.Select(a => a.Id));
+                        for (int i = QueueItems.Count - 1; i >= 0; i--)
+                        {
+                            if (!newIds.Contains(QueueItems[i].Id))
+                            {
+                                QueueItems.RemoveAt(i);
+                            }
+                        }
+                    });
+                    
+                    // Update stats
+                    TotalItems = response.Total;
+                    OnPropertyChanged(nameof(IsQueueEmpty));
+                    OnPropertyChanged(nameof(TotalTracksInQueue));
+                    OnPropertyChanged(nameof(CompletedTracksInQueue));
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Instance.LogWarning($"RefreshCurrentPageAsync failed: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Start the refresh timer if not already running
+        /// </summary>
+        private void StartRefreshTimerIfNeeded()
+        {
+            if (_refreshTimer != null && !_refreshTimer.IsEnabled)
+            {
+                _hasActiveDownloads = true;
+                _refreshTimer.Start();
+            }
         }
 
         /// <summary>
@@ -361,6 +520,13 @@ namespace DeeMusic.Desktop.ViewModels
                 LoggingService.Instance.LogInfo("Loading first page of queue items...");
                 await LoadPageAsync(0);
                 LoggingService.Instance.LogInfo($"Queue loaded successfully: {QueueItems.Count} items");
+                
+                // Start refresh timer if there are any items in the queue
+                _hasActiveDownloads = (QueueStats?.Downloading ?? 0) > 0 || (QueueStats?.Pending ?? 0) > 0;
+                if (_hasActiveDownloads || QueueItems.Count > 0)
+                {
+                    StartRefreshTimerIfNeeded();
+                }
             }
             catch (Exception ex)
             {
@@ -421,39 +587,21 @@ namespace DeeMusic.Desktop.ViewModels
                             {
                                 if (existingDict.TryGetValue(newItem.Id, out var existing))
                                 {
-                                    // Update existing item properties
-                                    existing.Status = newItem.Status;
-                                    
-                                    // Only update progress if it increased (never decrease)
-                                    if (newItem.Progress > existing.Progress)
-                                    {
-                                        LoggingService.Instance.LogInfo($"Progress UPDATE: {newItem.Title} {existing.Progress}% -> {newItem.Progress}%");
-                                        existing.Progress = newItem.Progress;
-                                    }
-                                    else if (newItem.Progress < existing.Progress)
-                                    {
-                                        LoggingService.Instance.LogWarning($"Progress BLOCKED: {newItem.Title} would decrease from {existing.Progress}% to {newItem.Progress}%");
-                                    }
-                                    
+                                    // Update track counts BEFORE status
                                     existing.TotalTracks = newItem.TotalTracks;
                                     existing.CompletedTracks = newItem.CompletedTracks;
+                                    existing.Progress = newItem.Progress;
                                     existing.ErrorMessage = newItem.ErrorMessage;
+                                    existing.Status = newItem.Status;
+                                    existing.UpdateComputedBackgroundColor();
                                 }
                                 else
                                 {
-                                    // Add new item at the end (oldest first)
+                                    newItem.UpdateComputedBackgroundColor();
                                     QueueItems.Add(newItem);
-                                    LoggingService.Instance.LogInfo($"Added queue item: ID={newItem.Id}, Title={newItem.Title}, TotalTracks={newItem.TotalTracks}, CompletedTracks={newItem.CompletedTracks}");
-                                    
-                                    // Force property change notifications for UI binding
-                                    newItem.OnPropertyChanged(nameof(newItem.TrackProgressText));
-                                    newItem.OnPropertyChanged(nameof(newItem.IsAlbumOrPlaylist));
-                                    newItem.OnPropertyChanged(nameof(newItem.IsCompleted));
                                 }
                             }
                         });
-                        
-                        LoggingService.Instance.LogInfo($"Filtered to {albumItems.Count} albums from {response.Items.Count} total items");
                     }
 
                     // Update pagination info
@@ -749,6 +897,22 @@ namespace DeeMusic.Desktop.ViewModels
             }
         }
 
+        /// <summary>
+        /// Get failed tracks for an album/playlist
+        /// </summary>
+        public async Task<List<FailedTrack>?> GetFailedTracksAsync(string parentId)
+        {
+            try
+            {
+                return await _service.GetFailedTracksAsync(parentId);
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Instance.LogError($"Failed to get failed tracks for {parentId}", ex);
+                return null;
+            }
+        }
+
         #endregion
 
         #region Event Handlers
@@ -761,10 +925,19 @@ namespace DeeMusic.Desktop.ViewModels
             // Ensure UI updates happen on the UI thread
             System.Windows.Application.Current?.Dispatcher.InvokeAsync(() =>
             {
+                // Mark that we have active downloads and start timer
+                _hasActiveDownloads = true;
+                StartRefreshTimerIfNeeded();
+                
                 // Find the queue item and update its progress
                 var item = QueueItems.FirstOrDefault(i => i.Id == e.ItemID);
                 if (item == null)
+                {
+                    // Item not found - this can happen if the queue was reloaded
+                    // The refresh timer will pick up the update
+                    LoggingService.Instance.LogWarning($"Progress update for unknown item: {e.ItemID}");
                     return;
+                }
 
                 // Only update progress if it increased - backend sometimes sends stale/incorrect values
                 if (e.Progress > item.Progress)
@@ -814,14 +987,71 @@ namespace DeeMusic.Desktop.ViewModels
         private void OnStatusChanged(object? sender, StatusUpdateEventArgs e)
         {
             // Ensure UI updates happen on the UI thread
-            System.Windows.Application.Current?.Dispatcher.InvokeAsync(() =>
+            System.Windows.Application.Current?.Dispatcher.InvokeAsync(async () =>
             {
+                // If status is "started" or "downloading", ensure timer is running
+                if (e.Status == "started" || e.Status == "downloading")
+                {
+                    _hasActiveDownloads = true;
+                    StartRefreshTimerIfNeeded();
+                }
+                
                 // Find the queue item and update its status
                 var item = QueueItems.FirstOrDefault(i => i.Id == e.ItemID);
                 if (item == null)
+                {
+                    // Item not found - the refresh timer will pick up the update
+                    LoggingService.Instance.LogWarning($"Status update for unknown item: {e.ItemID} -> {e.Status}");
                     return;
+                }
 
                 var previousStatus = item.Status;
+                
+                // For album completion, fetch fresh data and replace item
+                if (e.Status == "completed" && previousStatus != "completed" && item.IsAlbumOrPlaylist)
+                {
+                    try
+                    {
+                        var response = await _service.GetQueueAsync<QueueResponse>(0, 1000, null);
+                        var freshItem = response?.Items?.FirstOrDefault(i => i.Id == e.ItemID);
+                        
+                        if (freshItem != null)
+                        {
+                            freshItem.Status = "completed";
+                            freshItem.CompletedAt = DateTime.Now;
+                            freshItem.UpdateComputedBackgroundColor();
+                            
+                            var index = QueueItems.IndexOf(item);
+                            if (index >= 0)
+                            {
+                                QueueItems.RemoveAt(index);
+                                QueueItems.Insert(index, freshItem);
+                                
+                                // Fire PropertyChanged for DataTrigger properties
+                                freshItem.OnPropertyChanged(nameof(freshItem.IsPartialSuccess));
+                                freshItem.OnPropertyChanged(nameof(freshItem.IsCompleted));
+                                freshItem.OnPropertyChanged(nameof(freshItem.IsFailed));
+                            }
+                            
+                            // Show notification
+                            bool isPartial = freshItem.IsPartialSuccess;
+                            var notificationTitle = isPartial 
+                                ? $"{freshItem.Title} (Partial - {freshItem.CompletedTracks}/{freshItem.TotalTracks} tracks)"
+                                : freshItem.Title ?? "Track";
+                            _trayService?.ShowDownloadCompleted(notificationTitle);
+                            
+                            OnPropertyChanged(nameof(TotalTracksInQueue));
+                            OnPropertyChanged(nameof(CompletedTracksInQueue));
+                            return;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LoggingService.Instance.LogWarning($"Failed to fetch fresh data for completed album: {ex.Message}");
+                    }
+                }
+                
+                // Fallback: update status on existing item
                 item.Status = e.Status;
                 
                 if (!string.IsNullOrEmpty(e.ErrorMessage))
@@ -833,16 +1063,30 @@ namespace DeeMusic.Desktop.ViewModels
                 if (e.Status == "completed" && previousStatus != "completed")
                 {
                     item.CompletedAt = DateTime.Now;
-                    item.Progress = 100; // Ensure progress is 100%
                     
-                    LoggingService.Instance.LogInfo($"Item completed: {item.Title}, Status={item.Status}, IsCompleted={item.IsCompleted}, Progress={item.Progress}%");
+                    // Check IsPartialSuccess AFTER track counts and status are both set
+                    bool isPartial = item.IsAlbumOrPlaylist && item.CompletedTracks < item.TotalTracks;
+                    
+                    // Only set progress to 100% for single tracks or fully completed albums
+                    if (!item.IsAlbumOrPlaylist || !isPartial)
+                    {
+                        item.Progress = 100;
+                    }
+                    
+                    LoggingService.Instance.LogInfo($"Item completed: {item.Title}, CompletedTracks={item.CompletedTracks}/{item.TotalTracks}, IsPartialSuccess={isPartial}, Progress={item.Progress}%");
+                    
+                    // Force background color update
+                    item.UpdateComputedBackgroundColor();
                     
                     // Notify stats changed
                     OnPropertyChanged(nameof(TotalTracksInQueue));
                     OnPropertyChanged(nameof(CompletedTracksInQueue));
                     
                     // Show tray notification for download completion
-                    _trayService?.ShowDownloadCompleted(item.Title ?? "Track");
+                    var notificationTitle = isPartial 
+                        ? $"{item.Title} (Partial - {item.CompletedTracks}/{item.TotalTracks} tracks)"
+                        : item.Title ?? "Track";
+                    _trayService?.ShowDownloadCompleted(notificationTitle);
                 }
                 
                 // If status changed to failed, show error notification
@@ -889,6 +1133,14 @@ namespace DeeMusic.Desktop.ViewModels
         {
             if (_disposed)
                 return;
+
+            // Stop and dispose refresh timer
+            if (_refreshTimer != null)
+            {
+                _refreshTimer.Stop();
+                _refreshTimer.Tick -= OnRefreshTimerTick;
+                _refreshTimer = null;
+            }
 
             // Unsubscribe from events
             _service.ProgressUpdated -= OnProgressUpdated;
