@@ -53,13 +53,18 @@ namespace DeeMusic.Desktop.Services
                 var currentVersion = CurrentVersion;
 
                 LoggingService.Instance.LogInfo($"Current version: {currentVersion}, Latest version: {latestVersion}");
+                LoggingService.Instance.LogInfo($"Release tag name: {release.TagName}");
+                LoggingService.Instance.LogInfo($"Release name: {release.Name}");
 
                 if (IsNewerVersion(latestVersion, currentVersion))
                 {
+                    LoggingService.Instance.LogInfo($"New version available: {latestVersion} > {currentVersion}");
+                    
                     // Find the portable ZIP asset
                     var asset = FindPortableAsset(release);
                     if (asset != null)
                     {
+                        LoggingService.Instance.LogInfo($"Found portable asset: {asset.Name}");
                         return new UpdateInfo
                         {
                             Version = latestVersion,
@@ -69,6 +74,21 @@ namespace DeeMusic.Desktop.Services
                             FileSize = asset.Size
                         };
                     }
+                    else
+                    {
+                        LoggingService.Instance.LogWarning("No portable ZIP asset found in release");
+                        if (release.Assets != null)
+                        {
+                            foreach (var a in release.Assets)
+                            {
+                                LoggingService.Instance.LogInfo($"Available asset: {a.Name}");
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    LoggingService.Instance.LogInfo($"Version comparison: {latestVersion} is not newer than {currentVersion}");
                 }
 
                 LoggingService.Instance.LogInfo("No updates available");
@@ -173,8 +193,9 @@ namespace DeeMusic.Desktop.Services
                 var psi = new ProcessStartInfo
                 {
                     FileName = "powershell.exe",
-                    Arguments = $"-ExecutionPolicy Bypass -WindowStyle Normal -File \"{scriptPath}\"",
-                    UseShellExecute = true
+                    Arguments = $"-ExecutionPolicy Bypass -WindowStyle Hidden -File \"{scriptPath}\"",
+                    UseShellExecute = true,
+                    CreateNoWindow = true
                 };
 
                 // Request admin elevation if needed

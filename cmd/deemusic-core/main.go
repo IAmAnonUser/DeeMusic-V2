@@ -1142,24 +1142,33 @@ func ClearCompleted() C.int {
 	
 	// Log to debug file
 	if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
-		fmt.Fprintf(logFile, "[%s] ClearCompleted called\n", time.Now().Format("2006-01-02 15:04:05"))
+		fmt.Fprintf(logFile, "[%s] ClearCompleted called (async)\n", time.Now().Format("2006-01-02 15:04:05"))
 		logFile.Close()
 	}
 	
-	err := queueStore.ClearCompleted()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to clear completed: %v\n", err)
-		if logFile, err2 := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err2 == nil {
-			fmt.Fprintf(logFile, "[%s] ClearCompleted error: %v\n", time.Now().Format("2006-01-02 15:04:05"), err)
+	// Run ClearCompleted asynchronously to avoid blocking the queue processor
+	// This prevents pauses in download processing when clearing large numbers of completed items
+	go func() {
+		startTime := time.Now()
+		
+		err := queueStore.ClearCompleted()
+		
+		duration := time.Since(startTime)
+		
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to clear completed: %v\n", err)
+			if logFile, err2 := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err2 == nil {
+				fmt.Fprintf(logFile, "[%s] ClearCompleted error after %v: %v\n", time.Now().Format("2006-01-02 15:04:05"), duration, err)
+				logFile.Close()
+			}
+			return
+		}
+		
+		if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+			fmt.Fprintf(logFile, "[%s] ClearCompleted success (took %v)\n", time.Now().Format("2006-01-02 15:04:05"), duration)
 			logFile.Close()
 		}
-		return -2
-	}
-	
-	if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
-		fmt.Fprintf(logFile, "[%s] ClearCompleted success\n", time.Now().Format("2006-01-02 15:04:05"))
-		logFile.Close()
-	}
+	}()
 	
 	return 0
 }

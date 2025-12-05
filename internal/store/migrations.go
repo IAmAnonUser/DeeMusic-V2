@@ -124,6 +124,16 @@ CREATE INDEX IF NOT EXISTS idx_failed_tracks_parent ON failed_tracks(parent_id);
 CREATE INDEX IF NOT EXISTS idx_failed_tracks_date ON failed_tracks(failed_at DESC);
 `,
 	},
+	{
+		Version: 5,
+		Name:    "optimize_clear_completed",
+		Up: `
+-- Composite indexes to optimize ClearCompleted operation
+-- These speed up the complex DELETE queries with subqueries
+CREATE INDEX IF NOT EXISTS idx_queue_type_status_completion ON queue_items(type, status, completed_tracks, total_tracks);
+CREATE INDEX IF NOT EXISTS idx_queue_parent_type_status ON queue_items(parent_id, type, status) WHERE parent_id IS NOT NULL;
+`,
+	},
 }
 
 // RunMigrations executes all pending migrations
