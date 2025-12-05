@@ -336,9 +336,12 @@ namespace DeeMusic.Desktop.ViewModels
                 var stats = await _service.GetQueueStatsAsync();
                 if (stats != null)
                 {
-                    QueueStats = stats;
-                    OnPropertyChanged(nameof(QueueStats));
-                    OnPropertyChanged(nameof(Stats));
+                    // Update individual properties instead of replacing the entire object
+                    QueueStats.Total = stats.Total;
+                    QueueStats.Pending = stats.Pending;
+                    QueueStats.Downloading = stats.Downloading;
+                    QueueStats.Completed = stats.Completed;
+                    QueueStats.Failed = stats.Failed;
                     
                     // Check if there are active downloads
                     _hasActiveDownloads = stats.Downloading > 0 || stats.Pending > 0;
@@ -506,10 +509,16 @@ namespace DeeMusic.Desktop.ViewModels
                 var stats = await _service.GetQueueStatsAsync();
                 if (stats != null)
                 {
-                    QueueStats = stats;
-                    OnPropertyChanged(nameof(QueueStats));
-                    OnPropertyChanged(nameof(Stats));
+                    // Update individual properties instead of replacing the entire object
+                    // This ensures WPF bindings detect the changes
+                    QueueStats.Total = stats.Total;
+                    QueueStats.Pending = stats.Pending;
+                    QueueStats.Downloading = stats.Downloading;
+                    QueueStats.Completed = stats.Completed;
+                    QueueStats.Failed = stats.Failed;
+                    
                     LoggingService.Instance.LogInfo($"Queue stats loaded: Total={stats.Total}, Pending={stats.Pending}, Downloading={stats.Downloading}, Completed={stats.Completed}, Failed={stats.Failed}");
+                    LoggingService.Instance.LogInfo($"[DEBUG] After setting QueueStats: Stats.Total={Stats.Total}, QueueStats.Total={QueueStats.Total}");
                 }
                 else
                 {
@@ -789,12 +798,9 @@ namespace DeeMusic.Desktop.ViewModels
             {
                 await _service.ClearCompletedAsync();
                 
-                // Remove completed items from the collection
-                var completedItems = QueueItems.Where(i => i.IsCompleted).ToList();
-                foreach (var item in completedItems)
-                {
-                    QueueItems.Remove(item);
-                }
+                // Reload the queue from database to reflect what was actually deleted
+                // This is more reliable than trying to guess which items were removed
+                await LoadQueueAsync();
             }
             catch (Exception ex)
             {
@@ -1104,8 +1110,12 @@ namespace DeeMusic.Desktop.ViewModels
         {
             if (e.Stats != null)
             {
-                QueueStats = e.Stats;
-                OnPropertyChanged(nameof(QueueStats));
+                // Update individual properties instead of replacing the entire object
+                QueueStats.Total = e.Stats.Total;
+                QueueStats.Pending = e.Stats.Pending;
+                QueueStats.Downloading = e.Stats.Downloading;
+                QueueStats.Completed = e.Stats.Completed;
+                QueueStats.Failed = e.Stats.Failed;
             }
         }
 

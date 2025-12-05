@@ -18,7 +18,10 @@ namespace DeeMusic.Desktop.Services
         private static UpdateService? _instance;
         private readonly HttpClient _httpClient;
         private const string GitHubApiUrl = "https://api.github.com/repos/IAmAnonUser/DeeMusic-V2/releases/latest";
-        private const string CurrentVersion = "2.0.4"; // Update this with each release
+        
+        // Get version from assembly instead of hardcoding
+        private static string CurrentVersion => System.Reflection.Assembly.GetExecutingAssembly()
+            .GetName().Version?.ToString(3) ?? "0.0.0";
         
         public static UpdateService Instance => _instance ??= new UpdateService();
 
@@ -145,15 +148,29 @@ namespace DeeMusic.Desktop.Services
                 }
 
                 // Launch update script and exit application
+                // Use UseShellExecute = true and Verb = "runas" to request admin elevation
                 var psi = new ProcessStartInfo
                 {
                     FileName = "powershell.exe",
-                    Arguments = $"-ExecutionPolicy Bypass -File \"{scriptPath}\"",
-                    UseShellExecute = false,
-                    CreateNoWindow = true
+                    Arguments = $"-ExecutionPolicy Bypass -WindowStyle Hidden -File \"{scriptPath}\"",
+                    UseShellExecute = true,
+                    Verb = "runas" // Request admin elevation (UAC prompt will show)
                 };
 
-                Process.Start(psi);
+                try
+                {
+                    Process.Start(psi);
+                }
+                catch (System.ComponentModel.Win32Exception ex)
+                {
+                    // User cancelled UAC prompt
+                    if (ex.NativeErrorCode == 1223)
+                    {
+                        LoggingService.Instance.LogWarning("User cancelled update (UAC prompt)");
+                        return false;
+                    }
+                    throw;
+                }
                 
                 LoggingService.Instance.LogInfo("Update script launched, application will restart");
                 

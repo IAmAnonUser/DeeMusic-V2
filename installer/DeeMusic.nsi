@@ -2,7 +2,7 @@
 ; Creates a Windows installer for DeeMusic
 
 !define PRODUCT_NAME "DeeMusic"
-!define PRODUCT_VERSION "2.0.6"
+!define PRODUCT_VERSION "2.0.9"
 !define PRODUCT_PUBLISHER "DeeMusic Team"
 !define PRODUCT_WEB_SITE "https://github.com/yourusername/deemusic"
 !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
@@ -13,7 +13,7 @@
 
 ; General
 Name "${PRODUCT_NAME} ${PRODUCT_VERSION}"
-OutFile "..\scripts\build\DeeMusic-Setup-${PRODUCT_VERSION}.exe"
+OutFile "..\scripts\build\DeeMusic-Setup-v${PRODUCT_VERSION}.exe"
 InstallDir "$PROGRAMFILES64\DeeMusic"
 InstallDirRegKey HKLM "Software\${PRODUCT_NAME}" "InstallDir"
 RequestExecutionLevel admin

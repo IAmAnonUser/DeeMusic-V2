@@ -641,7 +641,7 @@
                         <!-- Current Version Info -->
                         <TextBlock FontSize="12" Foreground="{DynamicResource MaterialDesignBodyLight}">
                             <Run Text="Current Version: "/>
-                            <Run Text="2.0.4" FontWeight="Medium"/>
+                            <Run Text="{Binding CurrentVersion, Mode=OneWay}" FontWeight="Medium"/>
                         </TextBlock>
                     </StackPanel>
                 </ScrollViewer>

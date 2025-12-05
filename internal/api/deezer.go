@@ -263,39 +263,63 @@ func (c *DeezerClient) doPrivateAPIRequest(ctx context.Context, method string, p
 	return result, nil
 }
 
-// doPublicAPIRequest performs a request to Deezer's public API
+// doPublicAPIRequest performs a request to Deezer's public API with retry on quota errors
 func (c *DeezerClient) doPublicAPIRequest(ctx context.Context, endpoint string, params url.Values) (map[string]interface{}, error) {
-	apiURL := deezerAPIURL + endpoint
-	if len(params) > 0 {
-		apiURL += "?" + params.Encode()
+	maxRetries := 3
+	baseDelay := 2 * time.Second
+	
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		apiURL := deezerAPIURL + endpoint
+		if len(params) > 0 {
+			apiURL += "?" + params.Encode()
+		}
+
+		req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+
+		resp, err := c.doRequest(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			return nil, fmt.Errorf("API request failed with status: %d", resp.StatusCode)
+		}
+
+		var result map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			resp.Body.Close()
+			return nil, fmt.Errorf("failed to decode response: %w", err)
+		}
+		resp.Body.Close()
+
+		// Check for errors
+		if errData, ok := result["error"].(map[string]interface{}); ok && errData != nil {
+			// Check if it's a quota limit error (code 4)
+			if code, ok := errData["code"].(float64); ok && code == 4 {
+				if attempt < maxRetries {
+					// Exponential backoff: 2s, 4s, 8s
+					delay := baseDelay * time.Duration(1<<uint(attempt))
+					fmt.Printf("Quota limit exceeded, retrying in %v (attempt %d/%d)\n", delay, attempt+1, maxRetries)
+					
+					select {
+					case <-time.After(delay):
+						continue // Retry
+					case <-ctx.Done():
+						return nil, ctx.Err()
+					}
+				}
+			}
+			return nil, fmt.Errorf("API error: %v", errData)
+		}
+
+		return result, nil
 	}
-
-	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-
-	resp, err := c.doRequest(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API request failed with status: %d", resp.StatusCode)
-	}
-
-	var result map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	// Check for errors
-	if errData, ok := result["error"].(map[string]interface{}); ok && errData != nil {
-		return nil, fmt.Errorf("API error: %v", errData)
-	}
-
-	return result, nil
+	
+	return nil, fmt.Errorf("max retries exceeded for quota limit")
 }

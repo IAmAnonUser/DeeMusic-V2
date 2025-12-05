@@ -31,16 +31,18 @@
         
         <!-- Album Card Template with Download Button -->
         <DataTemplate x:Key="AlbumCardTemplate">
-            <materialDesign:Card Width="160" 
-                               Height="240" 
-                               Margin="0,0,16,16"
-                               UniformCornerRadius="8"
-                               Cursor="Hand">
-                <materialDesign:Card.InputBindings>
+            <Border Width="160" 
+                    Height="240" 
+                    Margin="0,0,16,16"
+                    CornerRadius="8"
+                    Background="{DynamicResource MaterialDesignCardBackground}"
+                    Cursor="Hand"
+                    BorderThickness="0">
+                <Border.InputBindings>
                     <MouseBinding MouseAction="LeftClick"
                                  Command="{Binding DataContext.ViewAlbumCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                  CommandParameter="{Binding}"/>
-                </materialDesign:Card.InputBindings>
+                </Border.InputBindings>
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="160"/>
@@ -91,7 +93,7 @@
                                   Margin="0,4,0,0"/>
                     </StackPanel>
                 </Grid>
-            </materialDesign:Card>
+            </Border>
         </DataTemplate>
     </UserControl.Resources>
     

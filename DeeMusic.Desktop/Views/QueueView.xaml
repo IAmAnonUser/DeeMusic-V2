@@ -45,7 +45,7 @@
                            Padding="12,4"
                            Margin="16,0,0,0"
                            VerticalAlignment="Center">
-                        <TextBlock Text="{Binding Stats.Total, StringFormat='{}{0} items'}"
+                        <TextBlock Text="{Binding QueueStats.Total, StringFormat='{}{0} items'}"
                                   FontSize="12"
                                   FontWeight="Medium"/>
                     </Border>
@@ -116,7 +116,7 @@
                     <TextBlock Text="Total" 
                               FontSize="12"
                               Foreground="{DynamicResource MaterialDesignBodyLight}"/>
-                    <TextBlock Text="{Binding Stats.Total}" 
+                    <TextBlock Text="{Binding QueueStats.Total}" 
                               FontSize="20"
                               FontWeight="SemiBold"
                               Foreground="{DynamicResource PrimaryHueMidBrush}"/>
@@ -127,7 +127,7 @@
                     <TextBlock Text="Completed" 
                               FontSize="12"
                               Foreground="{DynamicResource MaterialDesignBodyLight}"/>
-                    <TextBlock Text="{Binding Stats.Completed}" 
+                    <TextBlock Text="{Binding QueueStats.Completed}" 
                               FontSize="20"
                               FontWeight="SemiBold"
                               Foreground="#10b981"/>
