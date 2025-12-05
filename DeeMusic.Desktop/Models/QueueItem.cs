@@ -473,7 +473,15 @@ namespace DeeMusic.Desktop.Models
                 if (IsPartialSuccess)
                 {
                     int failedCount = TotalTracks - CompletedTracks;
-                    return $"{failedCount} of {TotalTracks} tracks failed to download";
+                    string baseMessage = $"{failedCount} of {TotalTracks} tracks failed";
+                    
+                    // Add error reason if available
+                    if (!string.IsNullOrEmpty(ErrorMessage))
+                    {
+                        return $"{baseMessage}. {ErrorMessage}";
+                    }
+                    
+                    return $"{baseMessage}. Click 'View Details' to see which tracks failed and why.";
                 }
                 if (!string.IsNullOrEmpty(ErrorMessage))
                     return ErrorMessage;

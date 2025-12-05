@@ -18,7 +18,10 @@ namespace DeeMusic.Desktop.Services
         private static UpdateService? _instance;
         private readonly HttpClient _httpClient;
         private const string GitHubApiUrl = "https://api.github.com/repos/IAmAnonUser/DeeMusic-V2/releases/latest";
-        private const string CurrentVersion = "2.0.4"; // Update this with each release
+        
+        // Get version from assembly instead of hardcoding
+        private static string CurrentVersion => System.Reflection.Assembly.GetExecutingAssembly()
+            .GetName().Version?.ToString(3) ?? "0.0.0";
         
         public static UpdateService Instance => _instance ??= new UpdateService();
 
@@ -135,6 +138,28 @@ namespace DeeMusic.Desktop.Services
             {
                 LoggingService.Instance.LogInfo($"Applying update from: {updatePackagePath}");
 
+                // Check if we need admin privileges
+                var appPath = AppDomain.CurrentDomain.BaseDirectory;
+                var needsAdmin = !HasWriteAccess(appPath);
+                
+                if (needsAdmin)
+                {
+                    LoggingService.Instance.LogInfo("Update requires administrator privileges");
+                    
+                    var result = MessageBox.Show(
+                        "This update requires administrator privileges to modify files in Program Files.\n\n" +
+                        "Click OK to restart with administrator privileges, or Cancel to skip the update.",
+                        "Administrator Required",
+                        MessageBoxButton.OKCancel,
+                        MessageBoxImage.Warning);
+                    
+                    if (result != MessageBoxResult.OK)
+                    {
+                        LoggingService.Instance.LogInfo("User declined admin elevation");
+                        return false;
+                    }
+                }
+
                 // Create update script
                 var scriptPath = CreateUpdateScript(updatePackagePath);
                 
@@ -144,16 +169,39 @@ namespace DeeMusic.Desktop.Services
                     return false;
                 }
 
-                // Launch update script and exit application
+                // Launch update script
                 var psi = new ProcessStartInfo
                 {
                     FileName = "powershell.exe",
-                    Arguments = $"-ExecutionPolicy Bypass -File \"{scriptPath}\"",
-                    UseShellExecute = false,
-                    CreateNoWindow = true
+                    Arguments = $"-ExecutionPolicy Bypass -WindowStyle Normal -File \"{scriptPath}\"",
+                    UseShellExecute = true
                 };
 
-                Process.Start(psi);
+                // Request admin elevation if needed
+                if (needsAdmin)
+                {
+                    psi.Verb = "runas";
+                }
+
+                try
+                {
+                    Process.Start(psi);
+                }
+                catch (System.ComponentModel.Win32Exception ex)
+                {
+                    // User cancelled UAC prompt
+                    if (ex.NativeErrorCode == 1223)
+                    {
+                        LoggingService.Instance.LogWarning("User cancelled update (UAC prompt)");
+                        MessageBox.Show(
+                            "Update cancelled. Administrator privileges are required to update the application.",
+                            "Update Cancelled",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Information);
+                        return false;
+                    }
+                    throw;
+                }
                 
                 LoggingService.Instance.LogInfo("Update script launched, application will restart");
                 
@@ -168,6 +216,29 @@ namespace DeeMusic.Desktop.Services
             catch (Exception ex)
             {
                 LoggingService.Instance.LogError("Failed to apply update", ex);
+                MessageBox.Show(
+                    $"Failed to apply update: {ex.Message}\n\nPlease try downloading the update manually from GitHub.",
+                    "Update Error",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Check if we have write access to a directory
+        /// </summary>
+        private bool HasWriteAccess(string directoryPath)
+        {
+            try
+            {
+                var testFile = Path.Combine(directoryPath, $"_write_test_{Guid.NewGuid()}.tmp");
+                File.WriteAllText(testFile, "test");
+                File.Delete(testFile);
+                return true;
+            }
+            catch
+            {
                 return false;
             }
         }
@@ -181,58 +252,132 @@ namespace DeeMusic.Desktop.Services
             {
                 var appPath = AppDomain.CurrentDomain.BaseDirectory;
                 var scriptPath = Path.Combine(Path.GetTempPath(), "DeeMusic_Update", "update.ps1");
+                var logPath = Path.Combine(Path.GetTempPath(), "DeeMusic_Update", "update.log");
 
                 var script = $@"
 # DeeMusic Update Script
-Write-Host 'Waiting for application to close...'
-Start-Sleep -Seconds 2
+$ErrorActionPreference = 'Stop'
+$logFile = '{logPath}'
 
-$appPath = '{appPath}'
-$updateZip = '{updatePackagePath}'
-$backupPath = '{Path.Combine(Path.GetTempPath(), "DeeMusic_Backup")}'
-
-Write-Host 'Creating backup...'
-if (Test-Path $backupPath) {{
-    Remove-Item -Path $backupPath -Recurse -Force
+function Write-Log {{
+    param($Message)
+    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    ""[$timestamp] $Message"" | Out-File -FilePath $logFile -Append
+    Write-Host $Message
 }}
-New-Item -ItemType Directory -Path $backupPath -Force | Out-Null
-Copy-Item -Path ""$appPath\*"" -Destination $backupPath -Recurse -Force
 
-Write-Host 'Extracting update...'
 try {{
-    # Extract to temp location first
+    Write-Log 'DeeMusic Update Script Started'
+    Write-Log 'Waiting for application to close...'
+    Start-Sleep -Seconds 2
+
+    $appPath = '{appPath}'
+    $updateZip = '{updatePackagePath}'
+    $backupPath = '{Path.Combine(Path.GetTempPath(), "DeeMusic_Backup")}'
     $tempExtract = '{Path.Combine(Path.GetTempPath(), "DeeMusic_Extract")}'
+
+    Write-Log ""App Path: $appPath""
+    Write-Log ""Update ZIP: $updateZip""
+
+    # Test write access to app directory
+    $testFile = Join-Path $appPath ""_update_test.tmp""
+    try {{
+        [System.IO.File]::WriteAllText($testFile, ""test"")
+        Remove-Item $testFile -Force
+        Write-Log 'Write access confirmed'
+    }} catch {{
+        Write-Log 'ERROR: No write access to application directory!'
+        Write-Log 'This update requires administrator privileges.'
+        Write-Log 'Please run the application as administrator and try again.'
+        [System.Windows.MessageBox]::Show(""Update failed: No write access to application directory.`n`nPlease run DeeMusic as administrator and try the update again."", ""Update Error"", ""OK"", ""Error"")
+        exit 1
+    }}
+
+    Write-Log 'Creating backup...'
+    if (Test-Path $backupPath) {{
+        Remove-Item -Path $backupPath -Recurse -Force
+    }}
+    New-Item -ItemType Directory -Path $backupPath -Force | Out-Null
+    Copy-Item -Path ""$appPath\*"" -Destination $backupPath -Recurse -Force
+    Write-Log 'Backup created'
+
+    Write-Log 'Extracting update...'
     if (Test-Path $tempExtract) {{
         Remove-Item -Path $tempExtract -Recurse -Force
     }}
     Expand-Archive -Path $updateZip -DestinationPath $tempExtract -Force
-    
-    # Copy files to application directory
-    Copy-Item -Path ""$tempExtract\*"" -Destination $appPath -Recurse -Force
-    
-    Write-Host 'Update applied successfully!'
-    
+    Write-Log 'Update extracted'
+
+    # Find the actual content folder (portable ZIP may have a subfolder)
+    $contentPath = $tempExtract
+    $possibleSubfolder = Get-ChildItem -Path $tempExtract -Directory | Where-Object {{ $_.Name -like ""DeeMusic*"" }} | Select-Object -First 1
+    if ($possibleSubfolder) {{
+        $contentPath = $possibleSubfolder.FullName
+        Write-Log ""Found content in subfolder: $($possibleSubfolder.Name)""
+    }}
+
+    # Verify the update contains the executable
+    $exePath = Join-Path $contentPath ""DeeMusic.Desktop.exe""
+    if (-not (Test-Path $exePath)) {{
+        Write-Log 'ERROR: Update package does not contain DeeMusic.Desktop.exe'
+        throw ""Invalid update package""
+    }}
+    Write-Log 'Update package validated'
+
+    Write-Log 'Copying files to application directory...'
+    # Copy all files from content path to app path
+    Get-ChildItem -Path $contentPath -Recurse | ForEach-Object {{
+        $targetPath = $_.FullName.Replace($contentPath, $appPath)
+        if ($_.PSIsContainer) {{
+            if (-not (Test-Path $targetPath)) {{
+                New-Item -ItemType Directory -Path $targetPath -Force | Out-Null
+            }}
+        }} else {{
+            Copy-Item -Path $_.FullName -Destination $targetPath -Force
+            Write-Log ""Copied: $($_.Name)""
+        }}
+    }}
+    Write-Log 'Files copied successfully'
+
     # Clean up
+    Write-Log 'Cleaning up temporary files...'
     Remove-Item -Path $tempExtract -Recurse -Force
     Remove-Item -Path $updateZip -Force
-    
+    Write-Log 'Cleanup complete'
+
     # Restart application
-    Write-Host 'Restarting application...'
+    Write-Log 'Restarting application...'
     Start-Sleep -Seconds 1
     Start-Process -FilePath ""$appPath\DeeMusic.Desktop.exe""
-    
-    Write-Host 'Update complete!'
-}} catch {{
-    Write-Host 'Update failed! Restoring backup...'
-    Copy-Item -Path ""$backupPath\*"" -Destination $appPath -Recurse -Force
-    Write-Host 'Backup restored. Starting application...'
-    Start-Process -FilePath ""$appPath\DeeMusic.Desktop.exe""
-}}
+    Write-Log 'Application restarted'
 
-# Clean up backup after 5 seconds
-Start-Sleep -Seconds 5
-if (Test-Path $backupPath) {{
-    Remove-Item -Path $backupPath -Recurse -Force
+    Write-Log 'Update completed successfully!'
+
+    # Clean up backup after 5 seconds
+    Start-Sleep -Seconds 5
+    if (Test-Path $backupPath) {{
+        Remove-Item -Path $backupPath -Recurse -Force
+        Write-Log 'Backup cleaned up'
+    }}
+
+}} catch {{
+    Write-Log ""ERROR: Update failed - $($_.Exception.Message)""
+    Write-Log 'Restoring backup...'
+    
+    try {{
+        if (Test-Path $backupPath) {{
+            Copy-Item -Path ""$backupPath\*"" -Destination $appPath -Recurse -Force
+            Write-Log 'Backup restored successfully'
+        }}
+    }} catch {{
+        Write-Log ""ERROR: Failed to restore backup - $($_.Exception.Message)""
+    }}
+    
+    Write-Log 'Starting application...'
+    Start-Process -FilePath ""$appPath\DeeMusic.Desktop.exe""
+    
+    [System.Windows.MessageBox]::Show(""Update failed: $($_.Exception.Message)`n`nYour previous version has been restored.`n`nCheck the log file at: $logFile"", ""Update Error"", ""OK"", ""Error"")
+    exit 1
 }}
 ";
 

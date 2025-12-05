@@ -169,6 +169,12 @@ namespace DeeMusic.Desktop.ViewModels
         public bool IsUpdateAvailable => _availableUpdate != null;
 
         /// <summary>
+        /// Gets the current application version
+        /// </summary>
+        public string CurrentVersion => System.Reflection.Assembly.GetExecutingAssembly()
+            .GetName().Version?.ToString(3) ?? "Unknown";
+
+        /// <summary>
         /// Gets the available update version
         /// </summary>
         public string? UpdateVersion => _availableUpdate?.Version;

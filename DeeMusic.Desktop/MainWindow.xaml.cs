@@ -175,16 +175,64 @@ namespace DeeMusic.Desktop
                         {
                             LoggingService.Instance.LogInfo($"Update available: v{updateInfo.Version}");
                             
-                            // Show notification
-                            NotificationService.Instance.ShowInfo($"Update available: v{updateInfo.Version}");
-                            
-                            // Auto-download if enabled
-                            if (mainViewModel.SettingsViewModel.AutoDownloadUpdates)
+                            // Show update dialog on UI thread
+                            await Dispatcher.InvokeAsync(async () =>
                             {
-                                LoggingService.Instance.LogInfo("Auto-downloading update...");
-                                var progress = new Progress<int>();
-                                await UpdateService.Instance.DownloadUpdateAsync(updateInfo, progress);
-                            }
+                                var result = MessageBox.Show(
+                                    this,
+                                    $"A new version of DeeMusic is available!\n\n" +
+                                    $"Current Version: {mainViewModel.SettingsViewModel.CurrentVersion}\n" +
+                                    $"New Version: {updateInfo.Version}\n\n" +
+                                    $"Would you like to download and install the update now?",
+                                    "Update Available",
+                                    MessageBoxButton.YesNo,
+                                    MessageBoxImage.Information);
+
+                                if (result == MessageBoxResult.Yes)
+                                {
+                                    try
+                                    {
+                                        // Show downloading notification
+                                        NotificationService.Instance.ShowInfo("Downloading update...");
+                                        
+                                        var progress = new Progress<int>(p =>
+                                        {
+                                            if (p % 10 == 0) // Update every 10%
+                                            {
+                                                NotificationService.Instance.ShowInfo($"Downloading update... {p}%");
+                                            }
+                                        });
+                                        
+                                        var downloadPath = await UpdateService.Instance.DownloadUpdateAsync(updateInfo, progress);
+                                        
+                                        if (downloadPath != null)
+                                        {
+                                            var installResult = MessageBox.Show(
+                                                this,
+                                                "Update downloaded successfully!\n\n" +
+                                                "The application will restart to install the update.",
+                                                "Update Ready",
+                                                MessageBoxButton.OKCancel,
+                                                MessageBoxImage.Information);
+
+                                            if (installResult == MessageBoxResult.OK)
+                                            {
+                                                UpdateService.Instance.ApplyUpdate(downloadPath);
+                                            }
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        LoggingService.Instance.LogError("Failed to download update", ex);
+                                        MessageBox.Show(
+                                            this,
+                                            $"Failed to download update: {ex.Message}",
+                                            "Update Error",
+                                            MessageBoxButton.OK,
+                                            MessageBoxImage.Error);
+                                    }
+                                }
+                            });
                         }
                         
                         // Update last check time

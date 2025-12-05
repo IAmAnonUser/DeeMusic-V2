@@ -62,8 +62,8 @@
     </Window.Resources>
     
     <Border Background="{DynamicResource MaterialDesignPaper}"
-            BorderBrush="{DynamicResource PrimaryHueMidBrush}"
-            BorderThickness="1"
+            BorderBrush="Transparent"
+            BorderThickness="0"
             CornerRadius="8">
         
         <Grid x:Name="RootGrid">
@@ -288,9 +288,9 @@
                                 <StackPanel Grid.Row="0" Margin="0,0,0,8">
                                     <TextBlock FontSize="12" Opacity="0.7">
                                         <Run Text="Total: "/>
-                                        <Run Text="{Binding QueueViewModel.TotalTracksInQueue, Mode=OneWay}" FontWeight="SemiBold"/>
+                                        <Run Text="{Binding QueueViewModel.QueueStats.Total, Mode=OneWay}" FontWeight="SemiBold"/>
                                         <Run Text=" | Completed: "/>
-                                        <Run Text="{Binding QueueViewModel.CompletedTracksInQueue, Mode=OneWay}" FontWeight="SemiBold"/>
+                                        <Run Text="{Binding QueueViewModel.QueueStats.Completed, Mode=OneWay}" FontWeight="SemiBold"/>
                                     </TextBlock>
                                 </StackPanel>
                                 

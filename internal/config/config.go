@@ -275,6 +275,7 @@ func setDefaults(v *viper.Viper) {
 	// Lyrics defaults
 	v.SetDefault("lyrics.enabled", true)
 	v.SetDefault("lyrics.embed_in_file", true)
+	v.SetDefault("lyrics.save_synced_file", true)  // Save .lrc files
 	v.SetDefault("lyrics.save_separate_file", false)
 	v.SetDefault("lyrics.language", "en")
 

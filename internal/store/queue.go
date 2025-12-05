@@ -354,6 +354,7 @@ func (qs *QueueStore) GetAll(offset, limit int) ([]*QueueItem, error) {
 		       metadata_json, parent_id, total_tracks, completed_tracks,
 		       created_at, updated_at, completed_at
 		FROM queue_items
+		WHERE type IN ('album', 'playlist')
 		ORDER BY created_at ASC
 		LIMIT ? OFFSET ?
 	`
@@ -368,6 +369,7 @@ func (qs *QueueStore) GetAll(offset, limit int) ([]*QueueItem, error) {
 }
 
 // GetByStatus retrieves queue items filtered by status with pagination
+// Only returns albums and playlists (parent items), not individual tracks
 func (qs *QueueStore) GetByStatus(status string, offset, limit int) ([]*QueueItem, error) {
 	// Enforce maximum limit to prevent memory issues
 	if limit > 1000 {
@@ -380,7 +382,7 @@ func (qs *QueueStore) GetByStatus(status string, offset, limit int) ([]*QueueIte
 		       metadata_json, parent_id, total_tracks, completed_tracks,
 		       created_at, updated_at, completed_at
 		FROM queue_items
-		WHERE status = ?
+		WHERE status = ? AND type IN ('album', 'playlist')
 		ORDER BY created_at DESC
 		LIMIT ? OFFSET ?
 	`
@@ -397,17 +399,21 @@ func (qs *QueueStore) GetByStatus(status string, offset, limit int) ([]*QueueIte
 // GetCount returns the total count of queue items
 func (qs *QueueStore) GetCount() (int, error) {
 	var count int
-	err := qs.db.QueryRow("SELECT COUNT(*) FROM queue_items").Scan(&count)
+	query := "SELECT COUNT(*) FROM queue_items WHERE type IN ('album', 'playlist')"
+	err := qs.db.QueryRow(query).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get queue count: %w", err)
 	}
+	// Debug log to verify the query is working
+	fmt.Printf("[DEBUG] GetCount query: %s, result: %d\n", query, count)
 	return count, nil
 }
 
 // GetCountByStatus returns the count of queue items for a specific status
+// Only counts albums and playlists (parent items), not individual tracks
 func (qs *QueueStore) GetCountByStatus(status string) (int, error) {
 	var count int
-	err := qs.db.QueryRow("SELECT COUNT(*) FROM queue_items WHERE status = ?", status).Scan(&count)
+	err := qs.db.QueryRow("SELECT COUNT(*) FROM queue_items WHERE status = ? AND type IN ('album', 'playlist')", status).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get queue count by status: %w", err)
 	}
@@ -415,6 +421,7 @@ func (qs *QueueStore) GetCountByStatus(status string) (int, error) {
 }
 
 // GetStats retrieves queue statistics
+// Only counts albums and playlists (parent items), not individual tracks
 func (qs *QueueStore) GetStats() (*QueueStats, error) {
 	query := `
 		SELECT
@@ -424,6 +431,7 @@ func (qs *QueueStore) GetStats() (*QueueStats, error) {
 			COALESCE(SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END), 0) as completed,
 			COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0) as failed
 		FROM queue_items
+		WHERE type IN ('album', 'playlist')
 	`
 
 	stats := &QueueStats{}
@@ -473,9 +481,12 @@ func (qs *QueueStore) ClearCompleted() error {
 
 	// Delete album items where all tracks are completed or deleted
 	// (albums with no remaining pending/downloading/failed tracks)
+	// BUT exclude albums with partial failures (completed_tracks < total_tracks)
 	_, err = tx.Exec(`
 		DELETE FROM queue_items 
 		WHERE type = 'album' 
+		AND status = 'completed'
+		AND completed_tracks = total_tracks
 		AND id NOT IN (
 			SELECT DISTINCT parent_id 
 			FROM queue_items 
@@ -491,9 +502,12 @@ func (qs *QueueStore) ClearCompleted() error {
 	}
 
 	// Delete playlist items where all tracks are completed or deleted
+	// BUT exclude playlists with partial failures (completed_tracks < total_tracks)
 	_, err = tx.Exec(`
 		DELETE FROM queue_items 
 		WHERE type = 'playlist' 
+		AND status = 'completed'
+		AND completed_tracks = total_tracks
 		AND id NOT IN (
 			SELECT DISTINCT parent_id 
 			FROM queue_items 
@@ -768,18 +782,19 @@ func (qs *QueueStore) CountCompletedChildren(parentID string) int {
 	return count
 }
 
-// CountFinishedChildren counts how many child tracks are finished (completed or permanently failed)
-// A track is considered permanently failed if it has failed and reached the max retry count
+// CountFinishedChildren counts how many child tracks are finished (completed or failed)
+// Any track with status 'completed' or 'failed' is considered finished
+// This allows albums to complete even when tracks fail without exhausting all retries
 func (qs *QueueStore) CountFinishedChildren(parentID string, maxRetries int) int {
 	query := `
 		SELECT COUNT(*) 
 		FROM queue_items 
 		WHERE parent_id = ? 
-		AND (status = 'completed' OR (status = 'failed' AND retry_count >= ?))
+		AND status IN ('completed', 'failed')
 	`
 	
 	var count int
-	err := qs.db.QueryRow(query, parentID, maxRetries).Scan(&count)
+	err := qs.db.QueryRow(query, parentID).Scan(&count)
 	if err != nil {
 		return 0
 	}
