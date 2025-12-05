@@ -182,7 +182,6 @@ namespace DeeMusic.Desktop.Services
                 {
                     psi.Verb = "runas";
                 }
-
                 try
                 {
                     Process.Start(psi);
