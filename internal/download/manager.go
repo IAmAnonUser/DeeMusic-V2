@@ -555,8 +555,10 @@ func (m *Manager) downloadTrackJob(ctx context.Context, job *Job) error {
 		if totalBytes > 0 {
 			progress := int((bytesProcessed * 100) / totalBytes)
 			
-			// Only update if progress has changed (avoid spamming database)
-			if progress != lastProgress {
+			// Only update if progress has changed by at least 5% (reduce database spam)
+			// Exception: Always update at 0% and 100%
+			progressDiff := progress - lastProgress
+			if progressDiff >= 5 || progress == 0 || progress == 100 || lastProgress == -1 {
 				lastProgress = progress
 				item.Progress = progress
 				m.queueStore.Update(item)
@@ -1328,39 +1330,75 @@ func (m *Manager) processResults() {
 				continue
 			}
 
-			// Update status to failed
-			item.Status = "failed"
-			item.ErrorMessage = result.Error.Error()
+			// Increment retry count FIRST, then check if we should retry
 			item.RetryCount++
-			m.queueStore.Update(item)
+			
+			// Check if we should retry (retry count must be LESS THAN OR EQUAL to max retries)
+			// Example: MaxRetries=3 means we try once + 3 retries = 4 total attempts
+			// So we retry when RetryCount is 1, 2, 3 (not 4+)
+			shouldRetry := item.RetryCount <= m.config.Network.MaxRetries
+			
+			if shouldRetry {
+				// Update status to failed temporarily (will be reset to pending on retry)
+				item.Status = "failed"
+				item.ErrorMessage = result.Error.Error()
+				m.queueStore.Update(item)
+				
+				// Log retry attempt
+				if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+					fmt.Fprintf(logFile, "[%s] Track %s failed (attempt %d/%d), will retry: %v\n", 
+						time.Now().Format("2006-01-02 15:04:05"), item.ID, item.RetryCount, m.config.Network.MaxRetries, result.Error)
+					logFile.Close()
+				}
 
-			// Notify failed
-			if m.notifier != nil {
-				m.notifier.NotifyFailed(result.JobID, result.Error)
-			}
-
-			// Retry if under limit
-			if item.RetryCount < m.config.Network.MaxRetries {
+				// Extract track ID from item ID (format: track_ALBUMID_TRACKID or just TRACKID)
+				trackID := item.ID
+				if strings.HasPrefix(item.ID, "track_") {
+					parts := strings.Split(item.ID, "_")
+					if len(parts) >= 3 {
+						trackID = parts[2] // Extract actual track ID
+					} else if len(parts) == 2 {
+						trackID = parts[1]
+					}
+				}
+				
 				// Create retry job
 				job := &Job{
 					ID:         item.ID,
 					Type:       JobType(item.Type),
-					TrackID:    item.ID, // Simplified, should extract from metadata
+					TrackID:    trackID,
+					AlbumID:    strings.TrimPrefix(item.ParentID, "album_"),
+					PlaylistID: strings.TrimPrefix(item.ParentID, "playlist_"),
 					RetryCount: item.RetryCount,
 				}
 
-				// Submit with delay
-				go func() {
-					delay := time.Duration(item.RetryCount) * 2 * time.Second
+				// Submit with exponential backoff delay
+				go func(j *Job, retryNum int) {
+					delay := time.Duration(retryNum) * 2 * time.Second
+					if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+						fmt.Fprintf(logFile, "[%s] Scheduling retry for %s in %v\n", 
+							time.Now().Format("2006-01-02 15:04:05"), j.ID, delay)
+						logFile.Close()
+					}
 					time.Sleep(delay)
-					m.workerPool.Submit(job)
-				}()
+					m.workerPool.Submit(j)
+				}(job, item.RetryCount)
 			} else {
-				// Max retries exceeded - record failed track and update parent progress
+				// Max retries exceeded - mark as permanently failed
+				item.Status = "failed"
+				item.ErrorMessage = result.Error.Error()
+				m.queueStore.Update(item)
+
+				// Notify failed
+				if m.notifier != nil {
+					m.notifier.NotifyFailed(result.JobID, result.Error)
+				}
+				
+				// Record failed track and update parent progress
 				if item.ParentID != "" {
 					if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
-						fmt.Fprintf(logFile, "[%s] Track %s permanently failed after %d retries, recording failure for parent %s\n", 
-							time.Now().Format("2006-01-02 15:04:05"), item.ID, item.RetryCount, item.ParentID)
+						fmt.Fprintf(logFile, "[%s] Track %s PERMANENTLY FAILED after %d attempts (max: %d), recording failure for parent %s\n", 
+							time.Now().Format("2006-01-02 15:04:05"), item.ID, item.RetryCount, m.config.Network.MaxRetries, item.ParentID)
 						logFile.Close()
 					}
 					
