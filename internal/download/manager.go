@@ -2733,8 +2733,14 @@ func (m *Manager) applyMetadataTags(ctx context.Context, filePath string, track 
 	})
 
 	// Prepare metadata with safe access
-	// Use album artist if available, otherwise fall back to track artist
-	albumArtist := track.Artist.Name // Default to track artist
+	// Use the AlbumArtist that was already calculated during download preparation
+	// This ensures consistency across all tracks in an album
+	albumArtist := track.AlbumArtist
+	if albumArtist == "" {
+		// Fallback if AlbumArtist wasn't set (shouldn't happen, but be safe)
+		albumArtist = track.Artist.Name
+	}
+	
 	albumTitle := track.Album.Title
 	trackNumber := track.TrackNumber
 	discNumber := track.DiscNumber
@@ -2747,7 +2753,7 @@ func (m *Manager) applyMetadataTags(ctx context.Context, filePath string, track 
 		logFile.Close()
 	}
 	
-	// For playlist downloads, use "Various Artists" as album artist and playlist name as album
+	// For playlist downloads, override with playlist-specific values
 	if track.Playlist != nil {
 		albumArtist = "Various Artists"
 		albumTitle = track.Playlist.Title
@@ -2760,22 +2766,6 @@ func (m *Manager) applyMetadataTags(ctx context.Context, filePath string, track 
 				time.Now().Format("2006-01-02 15:04:05"), albumTitle, albumArtist, trackNumber)
 			logFile.Close()
 		}
-	} else if track.Album.RecordType != "single" && track.Album.RecordType != "ep" &&
-	          (track.Album.RecordType == "compilation" || 
-	           strings.Contains(strings.ToLower(albumTitle), "soundtrack") ||
-	           strings.Contains(strings.ToLower(albumTitle), "original score") ||
-	           strings.Contains(strings.ToLower(albumTitle), "original motion picture")) {
-		// For compilations and soundtracks, use "Various Artists" as album artist
-		// Exclude singles and EPs even if they have "soundtrack" in the name
-		albumArtist = "Various Artists"
-		
-		if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
-			fmt.Fprintf(logFile, "[%s] Compilation/Soundtrack detected: Album='%s', RecordType='%s', using AlbumArtist=Various Artists\n", 
-				time.Now().Format("2006-01-02 15:04:05"), albumTitle, track.Album.RecordType)
-			logFile.Close()
-		}
-	} else if track.Album.Artist != nil && track.Album.Artist.Name != "" {
-		albumArtist = track.Album.Artist.Name
 	}
 
 	// Build artist string with featured artists

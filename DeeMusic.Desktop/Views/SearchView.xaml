@@ -1221,7 +1221,13 @@
                                                                Height="240" 
                                                                Margin="0,0,16,0"
                                                                UniformCornerRadius="8"
-                                                               Style="{StaticResource NoBorderCard}">
+                                                               Style="{StaticResource NoBorderCard}"
+                                                               Cursor="Hand">
+                                                <materialDesign:Card.InputBindings>
+                                                    <MouseBinding MouseAction="LeftClick"
+                                                                 Command="{Binding DataContext.ViewPlaylistCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                 CommandParameter="{Binding}"/>
+                                                </materialDesign:Card.InputBindings>
                                                 <Grid>
                                                     <Grid.RowDefinitions>
                                                         <RowDefinition Height="160"/>

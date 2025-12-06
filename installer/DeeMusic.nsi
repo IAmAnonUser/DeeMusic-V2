@@ -2,7 +2,7 @@
 ; Creates a Windows installer for DeeMusic
 
 !define PRODUCT_NAME "DeeMusic"
-!define PRODUCT_VERSION "2.1.3"
+!define PRODUCT_VERSION "2.1.4"
 !define PRODUCT_PUBLISHER "DeeMusic Team"
 !define PRODUCT_WEB_SITE "https://github.com/yourusername/deemusic"
 !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
