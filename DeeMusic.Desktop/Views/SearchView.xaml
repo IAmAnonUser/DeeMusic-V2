@@ -36,6 +36,27 @@
             <Setter Property="materialDesign:ShadowAssist.ShadowDepth" Value="Depth0"/>
             <Setter Property="materialDesign:ElevationAssist.Elevation" Value="Dp0"/>
         </Style>
+        
+        <!-- Style for card title text with wrapping -->
+        <Style x:Key="CardTitleText" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="MaxHeight" Value="36"/>
+            <Setter Property="LineHeight" Value="18"/>
+            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+        </Style>
+        
+        <!-- Style for card subtitle text with wrapping -->
+        <Style x:Key="CardSubtitleText" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="{DynamicResource MaterialDesignBodyLight}"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="MaxHeight" Value="30"/>
+            <Setter Property="LineHeight" Value="15"/>
+            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+            <Setter Property="Margin" Value="0,4,0,0"/>
+        </Style>
     </UserControl.Resources>
     
     <Grid>
@@ -407,13 +428,19 @@
                                                 
                                                 <StackPanel Grid.Row="1" 
                                                            Margin="12,8"
-                                                           VerticalAlignment="Center">
+                                                           VerticalAlignment="Top">
                                                     <TextBlock Text="{Binding Title}" 
                                                               FontWeight="SemiBold"
                                                               FontSize="13"
+                                                              TextWrapping="Wrap"
+                                                              MaxHeight="36"
+                                                              LineHeight="18"
                                                               TextTrimming="CharacterEllipsis"/>
                                                     <TextBlock FontSize="11"
                                                               Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                              TextWrapping="Wrap"
+                                                              MaxHeight="30"
+                                                              LineHeight="15"
                                                               TextTrimming="CharacterEllipsis"
                                                               Margin="0,4,0,0"
                                                               Cursor="Hand">

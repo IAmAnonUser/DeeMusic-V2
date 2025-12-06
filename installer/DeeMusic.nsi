@@ -2,7 +2,7 @@
 ; Creates a Windows installer for DeeMusic
 
 !define PRODUCT_NAME "DeeMusic"
-!define PRODUCT_VERSION "2.1.2"
+!define PRODUCT_VERSION "2.1.3"
 !define PRODUCT_PUBLISHER "DeeMusic Team"
 !define PRODUCT_WEB_SITE "https://github.com/yourusername/deemusic"
 !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
@@ -54,6 +54,10 @@ Section "MainSection" SEC01
   SetOutPath "$INSTDIR"
   SetOverwrite on
   
+  ; Kill any running instances before updating
+  nsExec::ExecToLog 'taskkill /F /IM DeeMusic.Desktop.exe'
+  Sleep 500
+  
   ; Copy all files from publish directory
   File /r "..\DeeMusic.Desktop\bin\Release\net8.0-windows\win-x64\publish\*"
   
@@ -77,6 +81,14 @@ Section "MainSection" SEC01
   
   ; Create uninstaller
   WriteUninstaller "$INSTDIR\uninst.exe"
+  
+  ; Refresh Windows Explorer cache to update taskbar tooltips and file properties
+  ; This ensures the correct version is displayed immediately
+  DetailPrint "Refreshing Windows Explorer cache..."
+  nsExec::ExecToLog 'ie4uinit.exe -show'
+  
+  ; Notify Windows that file associations have changed
+  System::Call 'shell32::SHChangeNotify(i 0x8000000, i 0, i 0, i 0)'
 SectionEnd
 
 Section "Uninstall"
