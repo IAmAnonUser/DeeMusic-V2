@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -159,85 +160,101 @@ namespace DeeMusic.Desktop
             {
                 if (mainViewModel.SettingsViewModel.CheckForUpdates)
                 {
-                    var lastCheck = mainViewModel.SettingsViewModel.Settings.System.LastUpdateCheck;
-                    var hoursSinceLastCheck = lastCheck.HasValue 
-                        ? (DateTime.Now - lastCheck.Value).TotalHours 
-                        : double.MaxValue;
+                    // Check for updates every time the app opens
+                    LoggingService.Instance.LogInfo("Checking for updates on startup...");
                     
-                    // Check once per day
-                    if (hoursSinceLastCheck >= 24)
+                    var updateInfo = await UpdateService.Instance.CheckForUpdatesAsync();
+                    
+                    // Update last check time
+                    mainViewModel.SettingsViewModel.Settings.System.LastUpdateCheck = DateTime.Now;
+                    await mainViewModel.SettingsViewModel.ForceSaveAsync();
+                    
+                    if (updateInfo != null)
                     {
-                        LoggingService.Instance.LogInfo("Checking for updates on startup...");
+                        LoggingService.Instance.LogInfo($"Update available: v{updateInfo.Version}");
                         
-                        var updateInfo = await UpdateService.Instance.CheckForUpdatesAsync();
+                        // Show update notification
+                        NotificationService.Instance.ShowInfo($"Update available: v{updateInfo.Version}");
                         
-                        if (updateInfo != null)
+                        // Show update dialog on UI thread
+                        await Dispatcher.InvokeAsync(async () =>
                         {
-                            LoggingService.Instance.LogInfo($"Update available: v{updateInfo.Version}");
-                            
-                            // Show update dialog on UI thread
-                            await Dispatcher.InvokeAsync(async () =>
+                            var result = MessageBox.Show(
+                                this,
+                                $"🎉 A new version of DeeMusic is available!\n\n" +
+                                $"Current Version: v{mainViewModel.SettingsViewModel.CurrentVersion}\n" +
+                                $"New Version: v{updateInfo.Version}\n\n" +
+                                $"Would you like to update now?\n\n" +
+                                $"The update will download in the background and restart the app when ready.",
+                                "Update Available",
+                                MessageBoxButton.YesNo,
+                                MessageBoxImage.Information);
+
+                            if (result == MessageBoxResult.Yes)
                             {
-                                var result = MessageBox.Show(
-                                    this,
-                                    $"A new version of DeeMusic is available!\n\n" +
-                                    $"Current Version: {mainViewModel.SettingsViewModel.CurrentVersion}\n" +
-                                    $"New Version: {updateInfo.Version}\n\n" +
-                                    $"Would you like to download and install the update now?",
-                                    "Update Available",
-                                    MessageBoxButton.YesNo,
-                                    MessageBoxImage.Information);
-
-                                if (result == MessageBoxResult.Yes)
+                                try
                                 {
-                                    try
+                                    // Show downloading notification
+                                    NotificationService.Instance.ShowInfo("Downloading update in background...");
+                                    LoggingService.Instance.LogInfo("User accepted update, starting download...");
+                                    
+                                    var progress = new Progress<int>(p =>
                                     {
-                                        // Show downloading notification
-                                        NotificationService.Instance.ShowInfo("Downloading update...");
-                                        
-                                        var progress = new Progress<int>(p =>
+                                        if (p % 20 == 0 || p == 100) // Update every 20%
                                         {
-                                            if (p % 10 == 0) // Update every 10%
-                                            {
-                                                NotificationService.Instance.ShowInfo($"Downloading update... {p}%");
-                                            }
-                                        });
-                                        
-                                        var downloadPath = await UpdateService.Instance.DownloadUpdateAsync(updateInfo, progress);
-                                        
-                                        if (downloadPath != null)
-                                        {
-                                            var installResult = MessageBox.Show(
-                                                this,
-                                                "Update downloaded successfully!\n\n" +
-                                                "The application will restart to install the update.",
-                                                "Update Ready",
-                                                MessageBoxButton.OKCancel,
-                                                MessageBoxImage.Information);
-
-                                            if (installResult == MessageBoxResult.OK)
-                                            {
-                                                UpdateService.Instance.ApplyUpdate(downloadPath);
-                                            }
+                                            NotificationService.Instance.ShowInfo($"Downloading update: {p}%");
+                                            LoggingService.Instance.LogInfo($"Update download progress: {p}%");
                                         }
-                                    }
-                                    catch (Exception ex)
+                                    });
+                                    
+                                    var downloadPath = await UpdateService.Instance.DownloadUpdateAsync(updateInfo, progress);
+                                    
+                                    if (downloadPath != null)
                                     {
-                                        LoggingService.Instance.LogError("Failed to download update", ex);
+                                        LoggingService.Instance.LogInfo($"Update downloaded successfully to: {downloadPath}");
+                                        NotificationService.Instance.ShowSuccess("Update downloaded! Restarting...");
+                                        
+                                        // Give user a moment to see the success message
+                                        await Task.Delay(1000);
+                                        
+                                        // Apply update (this will restart the app)
+                                        LoggingService.Instance.LogInfo("Applying update and restarting application...");
+                                        UpdateService.Instance.ApplyUpdate(downloadPath);
+                                    }
+                                    else
+                                    {
+                                        LoggingService.Instance.LogError("Update download returned null path");
+                                        NotificationService.Instance.ShowError("Failed to download update");
                                         MessageBox.Show(
                                             this,
-                                            $"Failed to download update: {ex.Message}",
+                                            "Failed to download the update.\n\nPlease try again later or download manually from GitHub.",
                                             "Update Error",
                                             MessageBoxButton.OK,
                                             MessageBoxImage.Error);
                                     }
                                 }
-                            });
-                        }
-                        
-                        // Update last check time
-                        mainViewModel.SettingsViewModel.Settings.System.LastUpdateCheck = DateTime.Now;
-                        await mainViewModel.SettingsViewModel.ForceSaveAsync();
+                                catch (Exception ex)
+                                {
+                                    LoggingService.Instance.LogError("Failed to download/install update", ex);
+                                    NotificationService.Instance.ShowError("Update failed");
+                                    MessageBox.Show(
+                                        this,
+                                        $"Failed to update: {ex.Message}\n\nPlease try again later or download manually from GitHub.",
+                                        "Update Error",
+                                        MessageBoxButton.OK,
+                                        MessageBoxImage.Error);
+                                }
+                            }
+                            else
+                            {
+                                LoggingService.Instance.LogInfo("User declined update");
+                                NotificationService.Instance.ShowInfo("Update postponed. Check Settings to update later.");
+                            }
+                        });
+                    }
+                    else
+                    {
+                        LoggingService.Instance.LogInfo("No updates available");
                     }
                 }
             }

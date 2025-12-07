@@ -32,8 +32,11 @@ namespace DeeMusic.Desktop.ViewModels
         
         // Periodic refresh timer to keep UI in sync with backend
         private System.Windows.Threading.DispatcherTimer? _refreshTimer;
-        private const int RefreshIntervalSeconds = 3; // Refresh every 3 seconds when downloads are active
+        private const int RefreshIntervalSeconds = 5; // Refresh every 5 seconds when downloads are active (reduced frequency for better performance)
         private bool _hasActiveDownloads;
+        
+        // Progress update throttling to prevent UI flooding
+        private readonly Dictionary<string, DateTime> _lastProgressUpdate = new();
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -326,9 +329,15 @@ namespace DeeMusic.Desktop.ViewModels
         /// </summary>
         private async void OnRefreshTimerTick(object? sender, EventArgs e)
         {
-            // Skip if already loading
+            // Skip if already loading or if UI is busy
             if (IsLoading)
                 return;
+            
+            // Temporarily stop timer during refresh to prevent overlapping refreshes
+            if (_refreshTimer != null)
+            {
+                _refreshTimer.Stop();
+            }
                 
             try
             {
@@ -363,6 +372,14 @@ namespace DeeMusic.Desktop.ViewModels
             {
                 System.Diagnostics.Debug.WriteLine($"Refresh timer tick failed: {ex.Message}");
             }
+            finally
+            {
+                // Restart timer if there are still active downloads
+                if (_hasActiveDownloads && _refreshTimer != null && !_refreshTimer.IsEnabled)
+                {
+                    _refreshTimer.Start();
+                }
+            }
         }
         
         /// <summary>
@@ -373,8 +390,9 @@ namespace DeeMusic.Desktop.ViewModels
             try
             {
                 var filter = StatusFilter == "all" ? null : StatusFilter;
+                // Only fetch current page for better performance (was PageSize * 10)
                 var response = await _service.GetQueueAsync<QueueResponse>(
-                    _currentOffset, PageSize * 10, filter);
+                    _currentOffset, PageSize, filter);
 
                 if (response?.Items != null)
                 {
@@ -796,10 +814,20 @@ namespace DeeMusic.Desktop.ViewModels
         {
             try
             {
+                // Remove completed items from UI immediately to prevent visual glitches
+                await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    var completedItems = QueueItems.Where(i => i.Status == "completed").ToList();
+                    foreach (var item in completedItems)
+                    {
+                        QueueItems.Remove(item);
+                    }
+                });
+                
+                // Then clear from backend
                 await _service.ClearCompletedAsync();
                 
-                // Reload the queue from database to reflect what was actually deleted
-                // This is more reliable than trying to guess which items were removed
+                // Reload the queue to ensure consistency
                 await LoadQueueAsync();
             }
             catch (Exception ex)
@@ -928,6 +956,18 @@ namespace DeeMusic.Desktop.ViewModels
         /// </summary>
         private void OnProgressUpdated(object? sender, ProgressUpdateEventArgs e)
         {
+            // Throttle progress updates to prevent UI flooding
+            // Only process if it's been at least 200ms since last update for this item
+            var now = DateTime.Now;
+            if (_lastProgressUpdate.TryGetValue(e.ItemID, out var lastUpdate))
+            {
+                if ((now - lastUpdate).TotalMilliseconds < 200)
+                {
+                    return; // Skip this update, too soon
+                }
+            }
+            _lastProgressUpdate[e.ItemID] = now;
+            
             // Ensure UI updates happen on the UI thread
             System.Windows.Application.Current?.Dispatcher.InvokeAsync(() =>
             {
@@ -941,7 +981,6 @@ namespace DeeMusic.Desktop.ViewModels
                 {
                     // Item not found - this can happen if the queue was reloaded
                     // The refresh timer will pick up the update
-                    LoggingService.Instance.LogWarning($"Progress update for unknown item: {e.ItemID}");
                     return;
                 }
 
@@ -960,11 +999,9 @@ namespace DeeMusic.Desktop.ViewModels
                     item.CompletedTracks = (int)e.BytesProcessed;
                     item.TotalTracks = (int)e.TotalBytes;
                     
-                    // Log track progress updates for albums/playlists
+                    // Only notify if counts actually changed
                     if (oldCompleted != item.CompletedTracks || oldTotal != item.TotalTracks)
                     {
-                        LoggingService.Instance.LogInfo($"Track progress update: {item.Title} - {item.CompletedTracks}/{item.TotalTracks} tracks ({item.Progress}%)");
-                        
                         // Notify total track counts changed
                         OnPropertyChanged(nameof(TotalTracksInQueue));
                         OnPropertyChanged(nameof(CompletedTracksInQueue));
@@ -992,7 +1029,7 @@ namespace DeeMusic.Desktop.ViewModels
         /// </summary>
         private void OnStatusChanged(object? sender, StatusUpdateEventArgs e)
         {
-            // Ensure UI updates happen on the UI thread
+            // Ensure UI updates happen on the UI thread with lower priority to not block user interactions
             System.Windows.Application.Current?.Dispatcher.InvokeAsync(async () =>
             {
                 // If status is "started" or "downloading", ensure timer is running
@@ -1007,11 +1044,16 @@ namespace DeeMusic.Desktop.ViewModels
                 if (item == null)
                 {
                     // Item not found - the refresh timer will pick up the update
-                    LoggingService.Instance.LogWarning($"Status update for unknown item: {e.ItemID} -> {e.Status}");
                     return;
                 }
 
                 var previousStatus = item.Status;
+                
+                // Skip if status hasn't actually changed
+                if (previousStatus == e.Status)
+                {
+                    return;
+                }
                 
                 // For album completion, fetch fresh data and replace item
                 if (e.Status == "completed" && previousStatus != "completed" && item.IsAlbumOrPlaylist)

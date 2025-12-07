@@ -172,6 +172,35 @@ func (qs *QueueStore) AddBatch(items []*QueueItem) error {
 
 // Update updates an existing queue item
 func (qs *QueueStore) Update(item *QueueItem) error {
+	// VALIDATION: Prevent albums/playlists from being marked as completed if not all tracks are finished
+	// A track is "finished" if it's completed OR permanently failed (status='failed')
+	if (item.Type == "album" || item.Type == "playlist") && item.Status == "completed" {
+		if item.TotalTracks > 0 {
+			// Count how many tracks are finished (completed + failed)
+			finishedCount := qs.CountFinishedChildren(item.ID, 3)
+			
+			// Only allow completion if all tracks are finished
+			if finishedCount < item.TotalTracks {
+				// Log the validation failure
+				if logFile, logErr := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); logErr == nil {
+					fmt.Fprintf(logFile, "[%s] VALIDATION FAILED: Preventing %s %s from being marked completed - only %d/%d tracks finished (completed=%d)\n", 
+						time.Now().Format("2006-01-02 15:04:05"), item.Type, item.ID, finishedCount, item.TotalTracks, item.CompletedTracks)
+					logFile.Close()
+				}
+				// Force status back to downloading
+				item.Status = "downloading"
+				item.CompletedAt = nil
+			} else {
+				// All tracks are finished - log success
+				if logFile, logErr := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); logErr == nil {
+					fmt.Fprintf(logFile, "[%s] VALIDATION PASSED: Allowing %s %s to complete - %d/%d tracks finished (completed=%d, failed=%d)\n", 
+						time.Now().Format("2006-01-02 15:04:05"), item.Type, item.ID, finishedCount, item.TotalTracks, item.CompletedTracks, finishedCount-item.CompletedTracks)
+					logFile.Close()
+				}
+			}
+		}
+	}
+
 	query := `
 		UPDATE queue_items
 		SET type = ?, title = ?, artist = ?, album = ?, status = ?,
@@ -530,6 +559,125 @@ func (qs *QueueStore) ClearCompleted() error {
 	return nil
 }
 
+// FixIncompleteAlbums fixes albums/playlists that were incorrectly marked as completed
+// when they actually have 0 tracks downloaded. Returns the number of items fixed.
+func (qs *QueueStore) FixIncompleteAlbums() (int, error) {
+	// Find albums/playlists marked as completed but with completed_tracks < total_tracks
+	query := `
+		UPDATE queue_items
+		SET status = 'pending', progress = 0, completed_at = NULL
+		WHERE (type = 'album' OR type = 'playlist')
+		AND status = 'completed'
+		AND completed_tracks < total_tracks
+		AND total_tracks > 0
+	`
+	
+	result, err := qs.db.Exec(query)
+	if err != nil {
+		return 0, fmt.Errorf("failed to fix incomplete albums: %w", err)
+	}
+	
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	
+	// Log to debug file
+	if rowsAffected > 0 {
+		if logFile, logErr := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); logErr == nil {
+			fmt.Fprintf(logFile, "[%s] DATABASE CLEANUP: Fixed %d incomplete albums/playlists\n", 
+				time.Now().Format("2006-01-02 15:04:05"), rowsAffected)
+			logFile.Close()
+		}
+	}
+	
+	return int(rowsAffected), nil
+}
+
+// FixStuckAlbums fixes albums/playlists stuck in "downloading" status where all tracks are finished
+// (either completed or permanently failed). Returns the number of items fixed.
+func (qs *QueueStore) FixStuckAlbums() (int, error) {
+	// Get all albums/playlists in downloading status
+	query := `
+		SELECT id, total_tracks, completed_tracks, updated_at
+		FROM queue_items
+		WHERE (type = 'album' OR type = 'playlist')
+		AND status = 'downloading'
+		AND total_tracks > 0
+	`
+	
+	rows, err := qs.db.Query(query)
+	if err != nil {
+		return 0, fmt.Errorf("failed to query stuck albums: %w", err)
+	}
+	defer rows.Close()
+	
+	fixedCount := 0
+	now := time.Now()
+	
+	for rows.Next() {
+		var id string
+		var totalTracks, completedTracks int
+		var updatedAt time.Time
+		
+		if err := rows.Scan(&id, &totalTracks, &completedTracks, &updatedAt); err != nil {
+			continue
+		}
+		
+		// Count finished tracks (completed + failed) in database
+		finishedCount := qs.CountFinishedChildren(id, 3)
+		
+		// Count total tracks that exist in database
+		var tracksInDB int
+		countQuery := `SELECT COUNT(*) FROM queue_items WHERE parent_id = ?`
+		if err := qs.db.QueryRow(countQuery, id).Scan(&tracksInDB); err != nil {
+			continue
+		}
+		
+		shouldComplete := false
+		reason := ""
+		
+		// Case 1: All tracks in database are finished
+		if finishedCount >= totalTracks {
+			shouldComplete = true
+			reason = fmt.Sprintf("all %d/%d tracks finished", finishedCount, totalTracks)
+		}
+		
+		// Case 2: Album hasn't been updated in 5+ minutes and has very few tracks in DB
+		// This handles cases where album download job failed to add all tracks
+		timeSinceUpdate := now.Sub(updatedAt)
+		if !shouldComplete && tracksInDB > 0 && tracksInDB < totalTracks && timeSinceUpdate > 5*time.Minute {
+			// If all tracks that DO exist are finished, mark album as completed
+			if finishedCount == tracksInDB {
+				shouldComplete = true
+				reason = fmt.Sprintf("stale album (updated %v ago) with only %d/%d tracks in DB, all finished", 
+					timeSinceUpdate.Round(time.Second), tracksInDB, totalTracks)
+			}
+		}
+		
+		if shouldComplete {
+			updateQuery := `
+				UPDATE queue_items
+				SET status = 'completed', completed_at = ?, progress = 100
+				WHERE id = ?
+			`
+			
+			_, err := qs.db.Exec(updateQuery, now, id)
+			if err == nil {
+				fixedCount++
+				
+				if logFile, logErr := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); logErr == nil {
+					fmt.Fprintf(logFile, "[%s] DATABASE CLEANUP: Fixed stuck album %s - %s (completed=%d, failed=%d)\n", 
+						time.Now().Format("2006-01-02 15:04:05"), id, reason, completedTracks, finishedCount-completedTracks)
+					logFile.Close()
+				}
+			}
+		}
+	}
+	
+	return fixedCount, nil
+}
+
 // scanItems scans multiple queue items from rows
 func (qs *QueueStore) scanItems(rows *sql.Rows) ([]*QueueItem, error) {
 	items := []*QueueItem{}
@@ -573,15 +721,20 @@ func (qs *QueueStore) scanItems(rows *sql.Rows) ([]*QueueItem, error) {
 
 		// For albums/playlists, dynamically calculate completed tracks count
 		// This ensures we always have accurate data even if the app was closed during downloads
+		// BUT: Only recalculate for non-terminal states to avoid race conditions during completion
 		if item.Type == "album" || item.Type == "playlist" {
-			actualCompletedCount := qs.CountCompletedChildren(item.ID)
-			if actualCompletedCount != item.CompletedTracks {
-				if logFile, logErr := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); logErr == nil {
-					fmt.Fprintf(logFile, "[%s] DB READ: Correcting completed count for %s: DB says %d, actual is %d\n", 
-						time.Now().Format("2006-01-02 15:04:05"), item.ID, item.CompletedTracks, actualCompletedCount)
-					logFile.Close()
+			// Only recalculate if album is still downloading or pending
+			// For completed/failed albums, trust the stored value to avoid visual glitches
+			if item.Status == "downloading" || item.Status == "pending" {
+				actualCompletedCount := qs.CountCompletedChildren(item.ID)
+				if actualCompletedCount != item.CompletedTracks {
+					if logFile, logErr := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); logErr == nil {
+						fmt.Fprintf(logFile, "[%s] DB READ: Correcting completed count for %s: DB says %d, actual is %d\n", 
+							time.Now().Format("2006-01-02 15:04:05"), item.ID, item.CompletedTracks, actualCompletedCount)
+						logFile.Close()
+					}
+					item.CompletedTracks = actualCompletedCount
 				}
-				item.CompletedTracks = actualCompletedCount
 			}
 		}
 		

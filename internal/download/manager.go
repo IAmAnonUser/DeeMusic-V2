@@ -551,15 +551,34 @@ func (m *Manager) downloadTrackJob(ctx context.Context, job *Job) error {
 
 	// Progress callback
 	lastProgress := -1
+	lastUpdateTime := time.Now()
 	progressCallback := func(bytesProcessed, totalBytes int64) {
 		if totalBytes > 0 {
 			progress := int((bytesProcessed * 100) / totalBytes)
 			
-			// Only update if progress has changed by at least 5% (reduce database spam)
-			// Exception: Always update at 0% and 100%
+			// Aggressive throttling to prevent database spam
+			// Only update every 10% OR every 2 seconds OR at completion
 			progressDiff := progress - lastProgress
-			if progressDiff >= 5 || progress == 0 || progress == 100 || lastProgress == -1 {
+			timeSinceUpdate := time.Since(lastUpdateTime)
+			
+			shouldUpdate := false
+			if progress == 100 {
+				// Always update at completion
+				shouldUpdate = true
+			} else if progressDiff >= 10 {
+				// Update every 10% (0, 10, 20, 30, etc.)
+				shouldUpdate = true
+			} else if progress > 0 && lastProgress == -1 {
+				// First progress update (download started)
+				shouldUpdate = true
+			} else if progress > lastProgress && timeSinceUpdate >= 2*time.Second {
+				// Update if progress increased and 2 seconds passed
+				shouldUpdate = true
+			}
+			
+			if shouldUpdate {
 				lastProgress = progress
+				lastUpdateTime = time.Now()
 				item.Progress = progress
 				m.queueStore.Update(item)
 

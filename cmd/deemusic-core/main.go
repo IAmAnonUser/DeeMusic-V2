@@ -286,6 +286,24 @@ func InitializeApp(configPath *C.char) C.int {
 	queueStore = store.NewQueueStore(db)
 	deezerAPI = api.NewDeezerClient(30 * time.Second)
 	
+	// Cleanup: Fix albums that were incorrectly marked as completed with 0 tracks
+	logDebug("Running database cleanup for incomplete albums...")
+	if cleanupCount, err := queueStore.FixIncompleteAlbums(); err != nil {
+		logDebug("Database cleanup failed: %v", err)
+	} else if cleanupCount > 0 {
+		logDebug("Database cleanup: Fixed %d incomplete albums", cleanupCount)
+		fmt.Fprintf(os.Stderr, "[INFO] Fixed %d incomplete albums in database\n", cleanupCount)
+	}
+	
+	// Cleanup: Fix albums stuck in "downloading" status where all tracks are finished
+	logDebug("Running database cleanup for stuck albums...")
+	if stuckCount, err := queueStore.FixStuckAlbums(); err != nil {
+		logDebug("Stuck album cleanup failed: %v", err)
+	} else if stuckCount > 0 {
+		logDebug("Database cleanup: Fixed %d stuck albums", stuckCount)
+		fmt.Fprintf(os.Stderr, "[INFO] Fixed %d stuck albums in database\n", stuckCount)
+	}
+	
 	// Authenticate with Deezer
 	logDebug("Checking Deezer ARL configuration...")
 	if cfg.Deezer.ARL != "" {

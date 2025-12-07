@@ -17,6 +17,7 @@ import (
 )
 
 // GetTrackDownloadURL retrieves the download URL for a track with specified quality
+// Automatically falls back to lower quality if requested quality is not available
 func (c *DeezerClient) GetTrackDownloadURL(ctx context.Context, trackID string, quality string) (*DownloadURL, error) {
 	if trackID == "" {
 		return nil, fmt.Errorf("track ID cannot be empty")
@@ -43,18 +44,50 @@ func (c *DeezerClient) GetTrackDownloadURL(ctx context.Context, trackID string, 
 		return nil, fmt.Errorf("failed to get track token: %w", err)
 	}
 
-	// Get media URL
-	mediaURL, err := c.getMediaURL(ctx, trackID, trackToken, quality)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get media URL: %w", err)
+	// Define quality fallback order based on requested quality
+	var qualityFallback []string
+	switch quality {
+	case QualityFLAC:
+		qualityFallback = []string{QualityFLAC, QualityMP3320, QualityMP3128}
+	case QualityMP3320:
+		qualityFallback = []string{QualityMP3320, QualityMP3128}
+	case QualityMP3128:
+		qualityFallback = []string{QualityMP3128}
 	}
 
-	return &DownloadURL{
-		TrackID: trackID,
-		Quality: quality,
-		URL:     mediaURL,
-		Format:  getFormatFromQuality(quality),
-	}, nil
+	// Try each quality in fallback order
+	var lastErr error
+	for _, tryQuality := range qualityFallback {
+		mediaURL, err := c.getMediaURL(ctx, trackID, trackToken, tryQuality)
+		if err == nil {
+			// Success! Log if we used fallback quality
+			if tryQuality != quality {
+				if logFile, logErr := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); logErr == nil {
+					fmt.Fprintf(logFile, "[%s] Quality fallback: requested %s, using %s for track %s\n", 
+						time.Now().Format("2006-01-02 15:04:05"), quality, tryQuality, trackID)
+					logFile.Close()
+				}
+			}
+			
+			return &DownloadURL{
+				TrackID: trackID,
+				Quality: tryQuality, // Return actual quality used
+				URL:     mediaURL,
+				Format:  getFormatFromQuality(tryQuality),
+			}, nil
+		}
+		lastErr = err
+		
+		// Log the attempt
+		if logFile, logErr := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); logErr == nil {
+			fmt.Fprintf(logFile, "[%s] Quality %s not available for track %s, trying next quality...\n", 
+				time.Now().Format("2006-01-02 15:04:05"), tryQuality, trackID)
+			logFile.Close()
+		}
+	}
+
+	// All qualities failed
+	return nil, fmt.Errorf("failed to get media URL (tried all qualities): %w", lastErr)
 }
 
 // getTrackToken retrieves the track token needed for download URL generation

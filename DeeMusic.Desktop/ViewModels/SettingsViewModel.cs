@@ -1057,13 +1057,7 @@ namespace DeeMusic.Desktop.ViewModels
                     }
                     
                     LoggingService.Instance.LogInfo($"Update available: v{updateInfo.Version}");
-                    NotificationService.Instance.ShowSuccess($"Update available: v{updateInfo.Version}");
-                    
-                    // Auto-download if enabled
-                    if (AutoDownloadUpdates)
-                    {
-                        await DownloadUpdateAsync();
-                    }
+                    NotificationService.Instance.ShowSuccess($"Update available: v{updateInfo.Version} - Click 'Download and Install' to update");
                 }
                 else
                 {
