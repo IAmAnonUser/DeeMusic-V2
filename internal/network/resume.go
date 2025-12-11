@@ -1,6 +1,7 @@
 package network
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"net/http"
@@ -160,14 +161,17 @@ func ResumeDownload(config *ResumeDownloadConfig) (*ResumeDownloadResult, error)
 		result.TotalBytes = resp.ContentLength + startByte
 	}
 
+	// Use buffered writer for better I/O performance (256KB buffer)
+	bufferedWriter := bufio.NewWriterSize(outputFile, 256*1024)
+
 	// Download with progress reporting
-	buffer := make([]byte, 32*1024) // 32KB buffer
+	buffer := make([]byte, 256*1024) // 256KB buffer for better throughput
 	bytesDownloaded := startByte
 
 	for {
 		n, err := resp.Body.Read(buffer)
 		if n > 0 {
-			if _, writeErr := outputFile.Write(buffer[:n]); writeErr != nil {
+			if _, writeErr := bufferedWriter.Write(buffer[:n]); writeErr != nil {
 				result.ErrorMessage = fmt.Sprintf("failed to write to file: %v", writeErr)
 				return result, fmt.Errorf("failed to write to file: %w", writeErr)
 			}
@@ -184,10 +188,18 @@ func ResumeDownload(config *ResumeDownloadConfig) (*ResumeDownloadResult, error)
 			break
 		}
 		if err != nil {
+			// Flush buffer before returning error
+			bufferedWriter.Flush()
 			result.ErrorMessage = fmt.Sprintf("error reading response: %v", err)
 			// Don't delete partial file on error - allow resume
 			return result, fmt.Errorf("error reading response: %w", err)
 		}
+	}
+	
+	// Flush buffered writer
+	if err := bufferedWriter.Flush(); err != nil {
+		result.ErrorMessage = fmt.Sprintf("failed to flush buffer: %v", err)
+		return result, fmt.Errorf("failed to flush buffer: %w", err)
 	}
 
 	// Verify download completed successfully

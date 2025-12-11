@@ -1,6 +1,7 @@
 package decryption
 
 import (
+	"bufio"
 	"crypto/cipher"
 	"crypto/md5"
 	"encoding/hex"
@@ -32,7 +33,7 @@ type StreamingProcessor struct {
 // Decryption uses fixed parameters regardless of this value.
 func NewStreamingProcessor(chunkSize int) *StreamingProcessor {
 	if chunkSize <= 0 {
-		chunkSize = 8192 // Default 8KB
+		chunkSize = 131072 // Default 128KB for better throughput (was 8KB)
 	}
 
 	iv, _ := hex.DecodeString("0001020304050607")
@@ -87,12 +88,15 @@ func (sp *StreamingProcessor) GenerateDecryptionKey(songID string) ([]byte, erro
 // of each 6144-byte segment, and writing the remaining 4096 bytes as-is.
 // CRITICAL: A new cipher must be created for each encrypted chunk to prevent state corruption.
 func (sp *StreamingProcessor) DecryptFile(encryptedPath, decryptedPath string, key []byte) error {
-	// Open encrypted file for reading
+	// Open encrypted file for reading with buffered I/O
 	encFile, err := os.Open(encryptedPath)
 	if err != nil {
 		return fmt.Errorf("failed to open encrypted file: %w", err)
 	}
 	defer encFile.Close()
+	
+	// Use buffered reader for better read performance (256KB buffer)
+	bufferedReader := bufio.NewReaderSize(encFile, 256*1024)
 
 	// Create decrypted file for writing
 	decFile, err := os.Create(decryptedPath)
@@ -100,40 +104,56 @@ func (sp *StreamingProcessor) DecryptFile(encryptedPath, decryptedPath string, k
 		return fmt.Errorf("failed to create decrypted file: %w", err)
 	}
 	defer decFile.Close()
+	
+	// Use buffered writer for better write performance (256KB buffer)
+	bufferedWriter := bufio.NewWriterSize(decFile, 256*1024)
+	defer bufferedWriter.Flush()
 
-	// Process file in segments
-	buffer := make([]byte, 0, sp.segmentSize)
-	segmentBuffer := make([]byte, sp.segmentSize)
+	// Process file in segments - read multiple segments at once for efficiency
+	// 64 segments = ~384KB per batch
+	const segmentsPerBatch = 64
+	batchSize := sp.segmentSize * segmentsPerBatch
+	
+	// Pre-allocate buffers
+	readBuffer := make([]byte, batchSize)
+	pendingData := make([]byte, 0, sp.segmentSize)
 
 	for {
-		// Read up to segmentSize bytes
-		n, err := encFile.Read(segmentBuffer[len(buffer):])
+		// Read a batch of data
+		n, readErr := bufferedReader.Read(readBuffer)
 		if n > 0 {
-			buffer = append(buffer, segmentBuffer[len(buffer):len(buffer)+n]...)
+			// Combine with any pending data from previous read
+			data := append(pendingData, readBuffer[:n]...)
+			pendingData = pendingData[:0] // Reset pending
+			
+			// Process complete segments
+			for len(data) >= sp.segmentSize {
+				segment := data[:sp.segmentSize]
+				if err := sp.processSegment(segment, bufferedWriter, key); err != nil {
+					return err
+				}
+				data = data[sp.segmentSize:]
+			}
+			
+			// Save any remaining partial segment for next iteration
+			if len(data) > 0 {
+				pendingData = append(pendingData, data...)
+			}
 		}
 
 		// Check for EOF
-		if err == io.EOF {
-			// Process any remaining data in buffer
-			if len(buffer) > 0 {
-				if err := sp.processSegment(buffer, decFile, key); err != nil {
+		if readErr == io.EOF {
+			// Process any remaining data
+			if len(pendingData) > 0 {
+				if err := sp.processSegment(pendingData, bufferedWriter, key); err != nil {
 					return err
 				}
 			}
 			break
 		}
 
-		if err != nil {
-			return fmt.Errorf("error reading encrypted file: %w", err)
-		}
-
-		// Process complete segments
-		for len(buffer) >= sp.segmentSize {
-			segment := buffer[:sp.segmentSize]
-			if err := sp.processSegment(segment, decFile, key); err != nil {
-				return err
-			}
-			buffer = buffer[sp.segmentSize:]
+		if readErr != nil {
+			return fmt.Errorf("error reading encrypted file: %w", readErr)
 		}
 	}
 
@@ -285,13 +305,17 @@ func (sp *StreamingProcessor) StreamDownload(url, outputPath string, progressCal
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
 	defer outFile.Close()
+	
+	// Use buffered writer for better I/O performance (256KB buffer)
+	bufferedWriter := bufio.NewWriterSize(outFile, 256*1024)
+	defer bufferedWriter.Flush()
 
-	// Download with progress reporting
+	// Download with progress reporting using larger buffer
 	buffer := make([]byte, sp.chunkSize)
 	for {
 		n, err := resp.Body.Read(buffer)
 		if n > 0 {
-			if _, writeErr := outFile.Write(buffer[:n]); writeErr != nil {
+			if _, writeErr := bufferedWriter.Write(buffer[:n]); writeErr != nil {
 				return fmt.Errorf("failed to write to file: %w", writeErr)
 			}
 			bytesDownloaded += int64(n)

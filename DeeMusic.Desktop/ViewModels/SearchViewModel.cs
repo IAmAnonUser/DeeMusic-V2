@@ -54,13 +54,19 @@ namespace DeeMusic.Desktop.ViewModels
                     
                     // If user starts typing while in ViewAll mode, exit ViewAll and show search
                     // But preserve the search query they're typing
+                    // Do this asynchronously to avoid blocking the UI
                     if (IsViewingAll && !string.IsNullOrWhiteSpace(value))
                     {
-                        // Clear view all state but keep the search query
-                        IsViewingAll = false;
-                        CurrentViewAllCategory = null;
-                        ViewAllItems.Clear();
-                        // Don't clear SearchQuery or results - user is typing a new search
+                        _ = Task.Run(() =>
+                        {
+                            System.Windows.Application.Current?.Dispatcher.InvokeAsync(() =>
+                            {
+                                // Clear view all state but keep the search query
+                                IsViewingAll = false;
+                                CurrentViewAllCategory = null;
+                                ViewAllItems.Clear();
+                            }, System.Windows.Threading.DispatcherPriority.Background);
+                        });
                     }
                 }
             }
@@ -920,40 +926,40 @@ namespace DeeMusic.Desktop.ViewModels
                     return;
                 }
 
-                // Populate New Releases (using editorial releases) - show 25 items
+                // Populate New Releases (using editorial releases) - show 12 items initially for better performance
                 if (editorialReleases?.Data != null)
                 {
-                    foreach (var album in editorialReleases.Data.Take(25))
+                    foreach (var album in editorialReleases.Data.Take(12))
                     {
                         NewReleases.Add(album);
                     }
                     LoggingService.Instance.LogInfo($"Loaded {NewReleases.Count} new releases");
                 }
 
-                // Populate Top Albums (same as new releases for now) - show 25 items
+                // Populate Top Albums - show 12 items initially for better performance
                 if (chartData.Albums?.Data != null)
                 {
-                    foreach (var album in chartData.Albums.Data.Take(25))
+                    foreach (var album in chartData.Albums.Data.Take(12))
                     {
                         TopAlbums.Add(album);
                     }
                     LoggingService.Instance.LogInfo($"Loaded {TopAlbums.Count} top albums");
                 }
 
-                // Populate Popular Playlists - show 25 items
+                // Populate Popular Playlists - show 12 items initially for better performance
                 if (chartData.Playlists?.Data != null)
                 {
-                    foreach (var playlist in chartData.Playlists.Data.Take(25))
+                    foreach (var playlist in chartData.Playlists.Data.Take(12))
                     {
                         PopularPlaylists.Add(playlist);
                     }
                     LoggingService.Instance.LogInfo($"Loaded {PopularPlaylists.Count} popular playlists");
                 }
 
-                // Populate Most Streamed Artists - show 25 items
+                // Populate Most Streamed Artists - show 12 items initially for better performance
                 if (chartData.Artists?.Data != null)
                 {
-                    foreach (var artist in chartData.Artists.Data.Take(25))
+                    foreach (var artist in chartData.Artists.Data.Take(12))
                     {
                         MostStreamedArtists.Add(artist);
                     }

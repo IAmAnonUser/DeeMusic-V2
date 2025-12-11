@@ -89,9 +89,12 @@ func GetDefaultClient() *http.Client {
 func GetDownloadClient(timeout time.Duration) *http.Client {
 	config := DefaultClientConfig()
 	config.Timeout = timeout
-	config.MaxIdleConnsPerHost = 10 // Fewer connections for downloads
-	config.MaxConnsPerHost = 20
-	config.ResponseHeaderTimeout = 60 * time.Second // Longer timeout for large files
+	config.MaxIdleConns = 200                        // More idle connections for reuse
+	config.MaxIdleConnsPerHost = 50                  // More connections per host for parallel downloads
+	config.MaxConnsPerHost = 100                     // Allow more concurrent connections to Deezer
+	config.IdleConnTimeout = 120 * time.Second       // Keep connections alive longer
+	config.ResponseHeaderTimeout = 60 * time.Second  // Longer timeout for large files
+	config.DisableKeepAlives = false                 // Ensure keep-alives are enabled
 	
 	return NewClient(config)
 }
