@@ -396,64 +396,104 @@ namespace DeeMusic.Desktop.ViewModels
 
                 if (response?.Items != null)
                 {
+                    // Do filtering and processing on background thread
                     var albumItems = response.Items
                         .Where(i => i.Type == "album" || i.Type == "playlist")
                         .OrderBy(i => i.CreatedAt)
                         .Take(PageSize)
                         .ToList();
                     
+                    // Pre-compute new IDs set on background thread
+                    var newIds = new HashSet<string>(albumItems.Select(a => a.Id));
+                    
+                    // Build lookup dictionary on background thread for O(1) access
+                    var newItemsDict = albumItems.ToDictionary(a => a.Id);
+                    
+                    // Minimize UI thread work - use low priority to avoid blocking user input
                     await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
                     {
-                        // Update existing items with fresh data
-                        foreach (var newItem in albumItems)
+                        // Build existing items lookup for O(1) access
+                        var existingDict = new Dictionary<string, int>();
+                        for (int i = 0; i < QueueItems.Count; i++)
                         {
-                            var existingIndex = -1;
-                            for (int i = 0; i < QueueItems.Count; i++)
+                            existingDict[QueueItems[i].Id] = i;
+                        }
+                        
+                        // Track items to remove (collect first, remove later to avoid index shifting)
+                        var indicesToRemove = new List<int>();
+                        
+                        // Update existing items
+                        foreach (var kvp in existingDict)
+                        {
+                            if (newItemsDict.TryGetValue(kvp.Key, out var newItem))
                             {
-                                if (QueueItems[i].Id == newItem.Id)
+                                var existing = QueueItems[kvp.Value];
+                                
+                                // Only update if values actually changed (reduces property change notifications)
+                                bool changed = false;
+                                if (existing.TotalTracks != newItem.TotalTracks)
                                 {
-                                    existingIndex = i;
-                                    break;
+                                    existing.TotalTracks = newItem.TotalTracks;
+                                    changed = true;
                                 }
-                            }
-                            
-                            if (existingIndex >= 0)
-                            {
-                                var existing = QueueItems[existingIndex];
+                                if (existing.CompletedTracks != newItem.CompletedTracks)
+                                {
+                                    existing.CompletedTracks = newItem.CompletedTracks;
+                                    changed = true;
+                                }
+                                if (existing.Progress != newItem.Progress)
+                                {
+                                    existing.Progress = newItem.Progress;
+                                    changed = true;
+                                }
+                                if (existing.ErrorMessage != newItem.ErrorMessage)
+                                {
+                                    existing.ErrorMessage = newItem.ErrorMessage;
+                                    changed = true;
+                                }
+                                if (existing.Status != newItem.Status)
+                                {
+                                    existing.Status = newItem.Status;
+                                    changed = true;
+                                }
                                 
-                                // Update track counts BEFORE status so IsPartialSuccess is calculated correctly
-                                existing.TotalTracks = newItem.TotalTracks;
-                                existing.CompletedTracks = newItem.CompletedTracks;
-                                existing.Progress = newItem.Progress;
-                                existing.ErrorMessage = newItem.ErrorMessage;
-                                existing.Status = newItem.Status;
-                                existing.UpdateComputedBackgroundColor();
+                                // Only update background color if something changed
+                                if (changed)
+                                {
+                                    existing.UpdateComputedBackgroundColor();
+                                }
                                 
-                                // Replace completed items to force WPF refresh
-                                if (existing.Status == "completed")
+                                // Replace completed items to force WPF refresh (only if status just changed to completed)
+                                if (changed && existing.Status == "completed")
                                 {
                                     newItem.UpdateComputedBackgroundColor();
-                                    QueueItems[existingIndex] = newItem;
+                                    QueueItems[kvp.Value] = newItem;
                                 }
                             }
-                            else if (!QueueItems.Any(q => q.Id == newItem.Id))
+                            else
                             {
-                                // Add new item - make sure background is set
+                                // Item no longer exists
+                                indicesToRemove.Add(kvp.Value);
+                            }
+                        }
+                        
+                        // Remove items in reverse order to maintain correct indices
+                        indicesToRemove.Sort();
+                        for (int i = indicesToRemove.Count - 1; i >= 0; i--)
+                        {
+                            QueueItems.RemoveAt(indicesToRemove[i]);
+                        }
+                        
+                        // Add new items that don't exist yet
+                        foreach (var newItem in albumItems)
+                        {
+                            if (!existingDict.ContainsKey(newItem.Id))
+                            {
                                 newItem.UpdateComputedBackgroundColor();
                                 QueueItems.Add(newItem);
                             }
                         }
-                        
-                        // Remove items that no longer exist
-                        var newIds = new HashSet<string>(albumItems.Select(a => a.Id));
-                        for (int i = QueueItems.Count - 1; i >= 0; i--)
-                        {
-                            if (!newIds.Contains(QueueItems[i].Id))
-                            {
-                                QueueItems.RemoveAt(i);
-                            }
-                        }
-                    });
+                    }, System.Windows.Threading.DispatcherPriority.Background);
                     
                     // Update stats
                     TotalItems = response.Total;
@@ -591,44 +631,68 @@ namespace DeeMusic.Desktop.ViewModels
                     // Add new items - albums and playlists (not individual tracks)
                     if (response.Items != null)
                     {
-                        var albumItems = response.Items.Where(i => i.Type == "album" || i.Type == "playlist").OrderBy(i => i.CreatedAt).Take(PageSize).ToList();
+                        // Do filtering on background thread
+                        var albumItems = response.Items
+                            .Where(i => i.Type == "album" || i.Type == "playlist")
+                            .OrderBy(i => i.CreatedAt)
+                            .Take(PageSize)
+                            .ToList();
                         
-                        // Ensure collection modifications happen on UI thread
+                        // Pre-compute sets on background thread
+                        var newIds = new HashSet<string>(albumItems.Select(a => a.Id));
+                        var newItemsDict = albumItems.ToDictionary(a => a.Id);
+                        
+                        // Minimize UI thread work with background priority
                         await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
                         {
-                            // Build lookup dictionary for fast access
-                            var existingDict = QueueItems.ToDictionary(q => q.Id);
-                            var newIds = new HashSet<string>(albumItems.Select(a => a.Id));
-                            
-                            // Remove items that no longer exist
-                            for (int i = QueueItems.Count - 1; i >= 0; i--)
+                            // Build lookup dictionary for fast O(1) access
+                            var existingDict = new Dictionary<string, int>();
+                            for (int i = 0; i < QueueItems.Count; i++)
                             {
-                                if (!newIds.Contains(QueueItems[i].Id))
+                                existingDict[QueueItems[i].Id] = i;
+                            }
+                            
+                            // Collect indices to remove
+                            var indicesToRemove = new List<int>();
+                            
+                            // Update existing items and mark removals
+                            foreach (var kvp in existingDict)
+                            {
+                                if (newItemsDict.TryGetValue(kvp.Key, out var newItem))
                                 {
-                                    QueueItems.RemoveAt(i);
+                                    var existing = QueueItems[kvp.Value];
+                                    // Update only if changed
+                                    bool changed = false;
+                                    if (existing.TotalTracks != newItem.TotalTracks) { existing.TotalTracks = newItem.TotalTracks; changed = true; }
+                                    if (existing.CompletedTracks != newItem.CompletedTracks) { existing.CompletedTracks = newItem.CompletedTracks; changed = true; }
+                                    if (existing.Progress != newItem.Progress) { existing.Progress = newItem.Progress; changed = true; }
+                                    if (existing.ErrorMessage != newItem.ErrorMessage) { existing.ErrorMessage = newItem.ErrorMessage; changed = true; }
+                                    if (existing.Status != newItem.Status) { existing.Status = newItem.Status; changed = true; }
+                                    if (changed) existing.UpdateComputedBackgroundColor();
+                                }
+                                else
+                                {
+                                    indicesToRemove.Add(kvp.Value);
                                 }
                             }
                             
-                            // Update existing items and add new ones
+                            // Remove in reverse order
+                            indicesToRemove.Sort();
+                            for (int i = indicesToRemove.Count - 1; i >= 0; i--)
+                            {
+                                QueueItems.RemoveAt(indicesToRemove[i]);
+                            }
+                            
+                            // Add new items
                             foreach (var newItem in albumItems)
                             {
-                                if (existingDict.TryGetValue(newItem.Id, out var existing))
-                                {
-                                    // Update track counts BEFORE status
-                                    existing.TotalTracks = newItem.TotalTracks;
-                                    existing.CompletedTracks = newItem.CompletedTracks;
-                                    existing.Progress = newItem.Progress;
-                                    existing.ErrorMessage = newItem.ErrorMessage;
-                                    existing.Status = newItem.Status;
-                                    existing.UpdateComputedBackgroundColor();
-                                }
-                                else
+                                if (!existingDict.ContainsKey(newItem.Id))
                                 {
                                     newItem.UpdateComputedBackgroundColor();
                                     QueueItems.Add(newItem);
                                 }
                             }
-                        });
+                        }, System.Windows.Threading.DispatcherPriority.Background);
                     }
 
                     // Update pagination info
