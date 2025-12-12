@@ -341,8 +341,11 @@ namespace DeeMusic.Desktop.ViewModels
                 
             try
             {
-                // Get fresh queue stats
-                var stats = await _service.GetQueueStatsAsync();
+                // Yield to UI thread first to ensure responsiveness
+                await Task.Yield();
+                
+                // Get fresh queue stats on background thread
+                var stats = await Task.Run(() => _service.GetQueueStatsAsync());
                 if (stats != null)
                 {
                     // Update individual properties instead of replacing the entire object
@@ -361,6 +364,9 @@ namespace DeeMusic.Desktop.ViewModels
                         _refreshTimer.Stop();
                     }
                 }
+                
+                // Yield again before heavy refresh operation
+                await Task.Yield();
                 
                 // Refresh the current page to get updated progress
                 if (_hasActiveDownloads)

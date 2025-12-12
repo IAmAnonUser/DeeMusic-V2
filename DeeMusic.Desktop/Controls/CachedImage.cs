@@ -39,6 +39,15 @@ namespace DeeMusic.Desktop.Controls
 
             try
             {
+                // Try to get from memory cache synchronously first (no async overhead)
+                var cachedImage = ImageCacheService.Instance.TryGetFromMemoryCache(url);
+                if (cachedImage != null)
+                {
+                    control.Source = cachedImage;
+                    return;
+                }
+                
+                // Not in memory cache, load asynchronously
                 var image = await ImageCacheService.Instance.GetImageAsync(url);
                 
                 // Check if URL hasn't changed while we were loading

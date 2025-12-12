@@ -31,6 +31,20 @@ namespace DeeMusic.Desktop.Services
         }
 
         /// <summary>
+        /// Try to get image from memory cache synchronously (no async overhead)
+        /// </summary>
+        public BitmapImage? TryGetFromMemoryCache(string? url)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+                return null;
+
+            if (_memoryCache.TryGetValue(url, out var cachedImage))
+                return cachedImage;
+
+            return null;
+        }
+
+        /// <summary>
         /// Get an image from cache or download it
         /// </summary>
         public async Task<BitmapImage?> GetImageAsync(string? url)
@@ -42,7 +56,7 @@ namespace DeeMusic.Desktop.Services
             if (_memoryCache.TryGetValue(url, out var cachedImage))
                 return cachedImage;
 
-            // Check disk cache
+            // Check disk cache - load on background thread to avoid blocking UI
             var fileName = GetCacheFileName(url);
             var filePath = Path.Combine(_diskCacheDirectory, fileName);
 
@@ -50,14 +64,16 @@ namespace DeeMusic.Desktop.Services
             {
                 try
                 {
-                    var image = LoadImageFromFile(filePath);
+                    // Read file bytes on background thread
+                    var imageData = await Task.Run(() => File.ReadAllBytes(filePath));
+                    var image = LoadImageFromBytes(imageData);
                     _memoryCache.TryAdd(url, image);
                     return image;
                 }
                 catch
                 {
                     // If file is corrupted, delete it and download again
-                    File.Delete(filePath);
+                    try { File.Delete(filePath); } catch { }
                 }
             }
 

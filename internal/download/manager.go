@@ -1476,7 +1476,7 @@ func (m *Manager) processQueue(ctx context.Context) {
 
 // processPendingItems processes pending items in the queue
 func (m *Manager) processPendingItems() {
-	// Get pending items
+	// Get pending items - only get a few to process in order
 	items, err := m.queueStore.GetPending(m.config.Download.ConcurrentDownloads * 2)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[ERROR] Failed to get pending items: %v\n", err)
@@ -1507,10 +1507,19 @@ func (m *Manager) processPendingItems() {
 		defer logFile.Close()
 	}
 
+	// Count active track downloads to determine if we can start more albums
+	// The goal is to keep the worker pool busy with up to ConcurrentDownloads tracks
+	activeTrackCount := m.workerPool.GetActiveJobCount()
+	maxConcurrent := m.config.Download.ConcurrentDownloads
+	
+	if logFile != nil {
+		fmt.Fprintf(logFile, "[%s] Active track count: %d, Max concurrent: %d\n", time.Now().Format("2006-01-02 15:04:05"), activeTrackCount, maxConcurrent)
+	}
+
 	for _, item := range items {
 		// Log to temp file
 		if logFile != nil {
-			fmt.Fprintf(logFile, "[%s] Processing item: %s\n", time.Now().Format("2006-01-02 15:04:05"), item.ID)
+			fmt.Fprintf(logFile, "[%s] Processing item: %s (type=%s)\n", time.Now().Format("2006-01-02 15:04:05"), item.ID, item.Type)
 		}
 		
 		// Check if already active
@@ -1527,6 +1536,19 @@ func (m *Manager) processPendingItems() {
 				fmt.Fprintf(logFile, "[%s]   Skipping %s - paused\n", time.Now().Format("2006-01-02 15:04:05"), item.ID)
 			}
 			continue
+		}
+		
+		// For albums/playlists, only start if we have capacity for more tracks
+		// This ensures we fill up to ConcurrentDownloads with tracks from albums in order
+		if item.Type == "album" || item.Type == "playlist" {
+			// Re-check active count as it may have changed
+			activeTrackCount = m.workerPool.GetActiveJobCount()
+			if activeTrackCount >= maxConcurrent {
+				if logFile != nil {
+					fmt.Fprintf(logFile, "[%s]   Skipping %s - max concurrent tracks reached (%d/%d)\n", time.Now().Format("2006-01-02 15:04:05"), item.ID, activeTrackCount, maxConcurrent)
+				}
+				continue
+			}
 		}
 
 			// Create job with proper ID extraction
@@ -1664,21 +1686,9 @@ func (m *Manager) DownloadAlbum(ctx context.Context, albumID string) error {
 		}
 	}
 
-	// Submit album job
-	job := &Job{
-		ID:      itemID,
-		Type:    JobTypeAlbum,
-		AlbumID: albumID,
-	}
-
-	fmt.Printf("[Manager] Submitting album job to worker pool...\n")
-	err = m.workerPool.Submit(job)
-	if err != nil {
-		fmt.Printf("[Manager] Failed to submit job: %v\n", err)
-		return err
-	}
-	
-	fmt.Printf("[Manager] Album job submitted successfully\n")
+	// Don't submit job immediately - let processPendingItems handle queue ordering
+	// This ensures albums are downloaded in the order they were added to the queue
+	fmt.Printf("[Manager] Album added to queue, will be processed in order\n")
 	return nil
 }
 
@@ -1742,21 +1752,9 @@ func (m *Manager) DownloadCustomPlaylist(ctx context.Context, playlistJSON strin
 		return fmt.Errorf("failed to add custom playlist to queue: %w", err)
 	}
 	
-	// Create job
-	job := &Job{
-		ID:         itemID,
-		Type:       JobTypePlaylist,
-		PlaylistID: customPlaylist.ID,
-		QueueItem:  queueItem,
-		IsCustom:   true,
-	}
-	
-	// Submit job
-	if err := m.workerPool.Submit(job); err != nil {
-		return fmt.Errorf("failed to submit custom playlist job: %w", err)
-	}
-	
-	fmt.Printf("[Manager] Custom playlist job submitted: %s\n", customPlaylist.Title)
+	// Don't submit job immediately - let processPendingItems handle queue ordering
+	// This ensures custom playlists are downloaded in the order they were added to the queue
+	fmt.Printf("[Manager] Custom playlist added to queue, will be processed in order: %s\n", customPlaylist.Title)
 	return nil
 }
 
@@ -1818,21 +1816,9 @@ func (m *Manager) DownloadPlaylist(ctx context.Context, playlistID string) error
 		}
 	}
 
-	// Submit playlist job
-	job := &Job{
-		ID:         itemID,
-		Type:       JobTypePlaylist,
-		PlaylistID: playlistID,
-	}
-
-	fmt.Printf("[Manager] Submitting playlist job to worker pool...\n")
-	err = m.workerPool.Submit(job)
-	if err != nil {
-		fmt.Printf("[Manager] Failed to submit job: %v\n", err)
-		return err
-	}
-	
-	fmt.Printf("[Manager] Playlist job submitted successfully\n")
+	// Don't submit job immediately - let processPendingItems handle queue ordering
+	// This ensures playlists are downloaded in the order they were added to the queue
+	fmt.Printf("[Manager] Playlist added to queue, will be processed in order\n")
 	return nil
 }
 
