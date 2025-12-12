@@ -412,7 +412,7 @@ func (qs *QueueStore) GetByStatus(status string, offset, limit int) ([]*QueueIte
 		       created_at, updated_at, completed_at
 		FROM queue_items
 		WHERE status = ? AND type IN ('album', 'playlist')
-		ORDER BY created_at DESC
+		ORDER BY created_at ASC
 		LIMIT ? OFFSET ?
 	`
 
