@@ -1516,6 +1516,24 @@ func (m *Manager) processPendingItems() {
 		fmt.Fprintf(logFile, "[%s] Active track count: %d, Max concurrent: %d\n", time.Now().Format("2006-01-02 15:04:05"), activeTrackCount, maxConcurrent)
 	}
 
+	// Find the first album/playlist that's currently downloading (if any)
+	// This ensures we prioritize completing albums in queue order
+	var currentAlbumID string
+	var currentAlbumProgress float64
+	for _, item := range items {
+		if (item.Type == "album" || item.Type == "playlist") && item.Status == "downloading" {
+			currentAlbumID = item.ID
+			if item.TotalTracks > 0 {
+				currentAlbumProgress = float64(item.CompletedTracks) / float64(item.TotalTracks)
+			}
+			if logFile != nil {
+				fmt.Fprintf(logFile, "[%s] Current album downloading: %s (%.1f%% complete, %d/%d tracks)\n", 
+					time.Now().Format("2006-01-02 15:04:05"), currentAlbumID, currentAlbumProgress*100, item.CompletedTracks, item.TotalTracks)
+			}
+			break
+		}
+	}
+
 	for _, item := range items {
 		// Log to temp file
 		if logFile != nil {
@@ -1538,9 +1556,26 @@ func (m *Manager) processPendingItems() {
 			continue
 		}
 		
-		// For albums/playlists, only start if we have capacity for more tracks
-		// This ensures we fill up to ConcurrentDownloads with tracks from albums in order
+		// For albums/playlists, enforce sequential downloading with smart concurrency
 		if item.Type == "album" || item.Type == "playlist" {
+			// If there's already an album downloading
+			if currentAlbumID != "" && currentAlbumID != item.ID {
+				// Only allow starting a new album if:
+				// 1. Current album is at least 75% complete, OR
+				// 2. There are free slots and current album has submitted all its tracks
+				if currentAlbumProgress < 0.75 {
+					if logFile != nil {
+						fmt.Fprintf(logFile, "[%s]   Skipping %s - current album %s is only %.1f%% complete (need 75%%)\n", 
+							time.Now().Format("2006-01-02 15:04:05"), item.ID, currentAlbumID, currentAlbumProgress*100)
+					}
+					continue
+				}
+				if logFile != nil {
+					fmt.Fprintf(logFile, "[%s]   Allowing %s to start - current album %s is %.1f%% complete\n", 
+						time.Now().Format("2006-01-02 15:04:05"), item.ID, currentAlbumID, currentAlbumProgress*100)
+				}
+			}
+			
 			// Re-check active count as it may have changed
 			activeTrackCount = m.workerPool.GetActiveJobCount()
 			if activeTrackCount >= maxConcurrent {
@@ -1548,6 +1583,15 @@ func (m *Manager) processPendingItems() {
 					fmt.Fprintf(logFile, "[%s]   Skipping %s - max concurrent tracks reached (%d/%d)\n", time.Now().Format("2006-01-02 15:04:05"), item.ID, activeTrackCount, maxConcurrent)
 				}
 				continue
+			}
+			
+			// If this is a new album starting, mark it as the current album
+			if currentAlbumID == "" {
+				currentAlbumID = item.ID
+				currentAlbumProgress = 0
+				if logFile != nil {
+					fmt.Fprintf(logFile, "[%s]   Starting new album: %s\n", time.Now().Format("2006-01-02 15:04:05"), item.ID)
+				}
 			}
 		}
 
