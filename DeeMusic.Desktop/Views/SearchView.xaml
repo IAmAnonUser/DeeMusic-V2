@@ -1335,75 +1335,168 @@
                                    Padding="12,6"/>
                         </Grid>
                         
-                        <!-- Show first 10 tracks -->
-                        <ItemsControl>
-                            <ItemsControl.ItemsSource>
-                                <Binding Path="TrackResults" />
-                            </ItemsControl.ItemsSource>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border BorderBrush="{DynamicResource MaterialDesignDivider}"
-                                           BorderThickness="0,0,0,1"
-                                           Padding="8"
-                                           Background="Transparent">
-                                        <Border.InputBindings>
-                                            <MouseBinding MouseAction="LeftDoubleClick"
-                                                         Command="{Binding DataContext.DownloadTrackCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                         CommandParameter="{Binding}"/>
-                                        </Border.InputBindings>
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="48"/>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
-                                            
-                                            <!-- Album Art -->
-                                            <controls:CachedImage Grid.Column="0"
-                                                                 ImageUrl="{Binding CoverMedium}"
-                                                                 Width="48"
-                                                                 Height="48"
-                                                                 Stretch="UniformToFill"/>
-                                            
-                                            <!-- Track Info -->
-                                            <StackPanel Grid.Column="1" 
-                                                       Margin="12,0,12,0"
-                                                       VerticalAlignment="Center">
-                                                <TextBlock Text="{Binding Title}"
-                                                          FontWeight="Medium"
-                                                          FontSize="14"
-                                                          TextTrimming="CharacterEllipsis"/>
-                                                <TextBlock Text="{Binding Artist.Name}"
-                                                          FontSize="12"
-                                                          Foreground="{DynamicResource MaterialDesignBodyLight}"
-                                                          TextTrimming="CharacterEllipsis"
-                                                          Margin="0,2,0,0"/>
-                                            </StackPanel>
-                                            
-                                            <!-- Duration -->
-                                            <TextBlock Grid.Column="2"
-                                                      Text="{Binding FormattedDuration}"
-                                                      FontSize="13"
-                                                      Foreground="{DynamicResource MaterialDesignBodyLight}"
-                                                      VerticalAlignment="Center"
-                                                      Margin="0,0,16,0"/>
-                                            
-                                            <!-- Download Button -->
-                                            <Button Grid.Column="3"
-                                                   Style="{StaticResource MaterialDesignIconButton}"
-                                                   Width="32"
-                                                   Height="32"
-                                                   Command="{Binding DataContext.DownloadTrackCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                   CommandParameter="{Binding}"
-                                                   ToolTip="Download Track">
-                                                <materialDesign:PackIcon Kind="Download" Width="18" Height="18"/>
-                                            </Button>
-                                        </Grid>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                        <!-- Track Table with Column Headers -->
+                        <materialDesign:Card UniformCornerRadius="8" Padding="0">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                
+                                <!-- Column Headers -->
+                                <Border Grid.Row="0"
+                                       Background="{DynamicResource MaterialDesignToolBarBackground}"
+                                       Padding="16,12"
+                                       BorderBrush="{DynamicResource MaterialDesignDivider}"
+                                       BorderThickness="0,0,0,1">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="48"/>
+                                            <ColumnDefinition Width="*" MinWidth="150"/>
+                                            <ColumnDefinition Width="180"/>
+                                            <ColumnDefinition Width="180"/>
+                                            <ColumnDefinition Width="80"/>
+                                            <ColumnDefinition Width="50"/>
+                                        </Grid.ColumnDefinitions>
+                                        
+                                        <TextBlock Grid.Column="0"
+                                                  Text=""
+                                                  FontSize="12"
+                                                  FontWeight="SemiBold"
+                                                  Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                                        
+                                        <TextBlock Grid.Column="1"
+                                                  Text="TITLE"
+                                                  FontSize="12"
+                                                  FontWeight="SemiBold"
+                                                  Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                  Margin="12,0"/>
+                                        
+                                        <TextBlock Grid.Column="2"
+                                                  Text="ARTIST"
+                                                  FontSize="12"
+                                                  FontWeight="SemiBold"
+                                                  Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                  Margin="8,0"/>
+                                        
+                                        <TextBlock Grid.Column="3"
+                                                  Text="ALBUM"
+                                                  FontSize="12"
+                                                  FontWeight="SemiBold"
+                                                  Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                  Margin="8,0"/>
+                                        
+                                        <TextBlock Grid.Column="4"
+                                                  Text="DURATION"
+                                                  FontSize="12"
+                                                  FontWeight="SemiBold"
+                                                  Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                  Margin="8,0"/>
+                                    </Grid>
+                                </Border>
+                                
+                                <!-- Track List -->
+                                <ItemsControl Grid.Row="1">
+                                    <ItemsControl.ItemsSource>
+                                        <Binding Path="TrackResults" />
+                                    </ItemsControl.ItemsSource>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border BorderBrush="{DynamicResource MaterialDesignDivider}"
+                                                   BorderThickness="0,0,0,1"
+                                                   Padding="16,8"
+                                                   Background="Transparent">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Style.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter Property="Background" Value="{DynamicResource MaterialDesignToolBarBackground}"/>
+                                                            </Trigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="48"/>
+                                                        <ColumnDefinition Width="*" MinWidth="150"/>
+                                                        <ColumnDefinition Width="180"/>
+                                                        <ColumnDefinition Width="180"/>
+                                                        <ColumnDefinition Width="80"/>
+                                                        <ColumnDefinition Width="50"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    
+                                                    <!-- Album Art -->
+                                                    <controls:CachedImage Grid.Column="0"
+                                                                         ImageUrl="{Binding CoverMedium}"
+                                                                         Width="40"
+                                                                         Height="40"
+                                                                         Stretch="UniformToFill"/>
+                                                    
+                                                    <!-- Track Title -->
+                                                    <TextBlock Grid.Column="1"
+                                                              Text="{Binding Title}"
+                                                              FontSize="14"
+                                                              VerticalAlignment="Center"
+                                                              TextTrimming="CharacterEllipsis"
+                                                              Margin="12,0"/>
+                                                    
+                                                    <!-- Artist (Clickable) -->
+                                                    <TextBlock Grid.Column="2"
+                                                              FontSize="14"
+                                                              Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                              VerticalAlignment="Center"
+                                                              TextTrimming="CharacterEllipsis"
+                                                              Margin="8,0"
+                                                              Cursor="Hand">
+                                                        <Hyperlink Command="{Binding DataContext.ViewArtistCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                  CommandParameter="{Binding Artist}"
+                                                                  TextDecorations="None"
+                                                                  Foreground="{DynamicResource MaterialDesignBodyLight}">
+                                                            <Run Text="{Binding Artist.Name, Mode=OneWay}"/>
+                                                        </Hyperlink>
+                                                    </TextBlock>
+                                                    
+                                                    <!-- Album (Clickable) -->
+                                                    <TextBlock Grid.Column="3"
+                                                              FontSize="14"
+                                                              Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                              VerticalAlignment="Center"
+                                                              TextTrimming="CharacterEllipsis"
+                                                              Margin="8,0"
+                                                              Cursor="Hand">
+                                                        <Hyperlink Command="{Binding DataContext.ViewAlbumCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                  CommandParameter="{Binding Album}"
+                                                                  TextDecorations="None"
+                                                                  Foreground="{DynamicResource MaterialDesignBodyLight}">
+                                                            <Run Text="{Binding Album.Title, Mode=OneWay}"/>
+                                                        </Hyperlink>
+                                                    </TextBlock>
+                                                    
+                                                    <!-- Duration -->
+                                                    <TextBlock Grid.Column="4"
+                                                              Text="{Binding FormattedDuration}"
+                                                              FontSize="14"
+                                                              Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                              VerticalAlignment="Center"
+                                                              Margin="8,0"/>
+                                                    
+                                                    <!-- Download Button -->
+                                                    <Button Grid.Column="5"
+                                                           Style="{StaticResource MaterialDesignIconButton}"
+                                                           Width="36"
+                                                           Height="36"
+                                                           Command="{Binding DataContext.DownloadTrackCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                           CommandParameter="{Binding}"
+                                                           ToolTip="Download Track">
+                                                        <materialDesign:PackIcon Kind="Download" Width="18" Height="18"/>
+                                                    </Button>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Grid>
+                        </materialDesign:Card>
                     </StackPanel>
                     
                 </StackPanel>
@@ -1414,73 +1507,166 @@
                 <StackPanel Visibility="{Binding ShowFilteredResults, Converter={StaticResource BooleanToVisibilityConverter}}"
                            Margin="24,0,24,24">
                     
-                    <!-- Tracks Grid -->
-                    <ItemsControl ItemsSource="{Binding TrackResults}"
-                                 Visibility="{Binding IsTracksTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Border BorderBrush="{DynamicResource MaterialDesignDivider}"
-                                       BorderThickness="0,0,0,1"
-                                       Padding="8"
-                                       Background="Transparent">
-                                    <Border.InputBindings>
-                                        <MouseBinding MouseAction="LeftDoubleClick"
-                                                     Command="{Binding DataContext.DownloadTrackCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                     CommandParameter="{Binding}"/>
-                                    </Border.InputBindings>
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="48"/>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        
-                                        <!-- Album Art -->
-                                        <controls:CachedImage Grid.Column="0"
-                                                             ImageUrl="{Binding CoverMedium}"
-                                                             Width="48"
-                                                             Height="48"
-                                                             Stretch="UniformToFill"/>
-                                        
-                                        <!-- Track Info -->
-                                        <StackPanel Grid.Column="1" 
-                                                   Margin="12,0,12,0"
-                                                   VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding Title}"
-                                                      FontWeight="Medium"
-                                                      FontSize="14"
-                                                      TextTrimming="CharacterEllipsis"/>
-                                            <TextBlock Text="{Binding Artist.Name}"
-                                                      FontSize="12"
-                                                      Foreground="{DynamicResource MaterialDesignBodyLight}"
-                                                      TextTrimming="CharacterEllipsis"
-                                                      Margin="0,2,0,0"/>
-                                        </StackPanel>
-                                        
-                                        <!-- Duration -->
-                                        <TextBlock Grid.Column="2"
-                                                  Text="{Binding FormattedDuration}"
-                                                  FontSize="13"
-                                                  Foreground="{DynamicResource MaterialDesignBodyLight}"
-                                                  VerticalAlignment="Center"
-                                                  Margin="0,0,16,0"/>
-                                        
-                                        <!-- Download Button -->
-                                        <Button Grid.Column="3"
-                                               Style="{StaticResource MaterialDesignIconButton}"
-                                               Width="32"
-                                               Height="32"
-                                               Command="{Binding DataContext.DownloadTrackCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                               CommandParameter="{Binding}"
-                                               ToolTip="Download Track">
-                                            <materialDesign:PackIcon Kind="Download" Width="18" Height="18"/>
-                                        </Button>
-                                    </Grid>
-                                </Border>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                    <!-- Tracks Grid (Table Format) -->
+                    <materialDesign:Card UniformCornerRadius="8" Padding="0"
+                                        Visibility="{Binding IsTracksTabSelected, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            
+                            <!-- Column Headers -->
+                            <Border Grid.Row="0"
+                                   Background="{DynamicResource MaterialDesignToolBarBackground}"
+                                   Padding="16,12"
+                                   BorderBrush="{DynamicResource MaterialDesignDivider}"
+                                   BorderThickness="0,0,0,1">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="48"/>
+                                        <ColumnDefinition Width="*" MinWidth="150"/>
+                                        <ColumnDefinition Width="180"/>
+                                        <ColumnDefinition Width="180"/>
+                                        <ColumnDefinition Width="80"/>
+                                        <ColumnDefinition Width="50"/>
+                                    </Grid.ColumnDefinitions>
+                                    
+                                    <TextBlock Grid.Column="0"
+                                              Text=""
+                                              FontSize="12"
+                                              FontWeight="SemiBold"
+                                              Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                                    
+                                    <TextBlock Grid.Column="1"
+                                              Text="TITLE"
+                                              FontSize="12"
+                                              FontWeight="SemiBold"
+                                              Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                              Margin="12,0"/>
+                                    
+                                    <TextBlock Grid.Column="2"
+                                              Text="ARTIST"
+                                              FontSize="12"
+                                              FontWeight="SemiBold"
+                                              Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                              Margin="8,0"/>
+                                    
+                                    <TextBlock Grid.Column="3"
+                                              Text="ALBUM"
+                                              FontSize="12"
+                                              FontWeight="SemiBold"
+                                              Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                              Margin="8,0"/>
+                                    
+                                    <TextBlock Grid.Column="4"
+                                              Text="DURATION"
+                                              FontSize="12"
+                                              FontWeight="SemiBold"
+                                              Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                              Margin="8,0"/>
+                                </Grid>
+                            </Border>
+                            
+                            <!-- Track List -->
+                            <ItemsControl Grid.Row="1" ItemsSource="{Binding TrackResults}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="{DynamicResource MaterialDesignDivider}"
+                                               BorderThickness="0,0,0,1"
+                                               Padding="16,8"
+                                               Background="Transparent">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Style.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Background" Value="{DynamicResource MaterialDesignToolBarBackground}"/>
+                                                        </Trigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="48"/>
+                                                    <ColumnDefinition Width="*" MinWidth="150"/>
+                                                    <ColumnDefinition Width="180"/>
+                                                    <ColumnDefinition Width="180"/>
+                                                    <ColumnDefinition Width="80"/>
+                                                    <ColumnDefinition Width="50"/>
+                                                </Grid.ColumnDefinitions>
+                                                
+                                                <!-- Album Art -->
+                                                <controls:CachedImage Grid.Column="0"
+                                                                     ImageUrl="{Binding CoverMedium}"
+                                                                     Width="40"
+                                                                     Height="40"
+                                                                     Stretch="UniformToFill"/>
+                                                
+                                                <!-- Track Title -->
+                                                <TextBlock Grid.Column="1"
+                                                          Text="{Binding Title}"
+                                                          FontSize="14"
+                                                          VerticalAlignment="Center"
+                                                          TextTrimming="CharacterEllipsis"
+                                                          Margin="12,0"/>
+                                                
+                                                <!-- Artist (Clickable) -->
+                                                <TextBlock Grid.Column="2"
+                                                          FontSize="14"
+                                                          Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                          VerticalAlignment="Center"
+                                                          TextTrimming="CharacterEllipsis"
+                                                          Margin="8,0"
+                                                          Cursor="Hand">
+                                                    <Hyperlink Command="{Binding DataContext.ViewArtistCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                              CommandParameter="{Binding Artist}"
+                                                              TextDecorations="None"
+                                                              Foreground="{DynamicResource MaterialDesignBodyLight}">
+                                                        <Run Text="{Binding Artist.Name, Mode=OneWay}"/>
+                                                    </Hyperlink>
+                                                </TextBlock>
+                                                
+                                                <!-- Album (Clickable) -->
+                                                <TextBlock Grid.Column="3"
+                                                          FontSize="14"
+                                                          Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                          VerticalAlignment="Center"
+                                                          TextTrimming="CharacterEllipsis"
+                                                          Margin="8,0"
+                                                          Cursor="Hand">
+                                                    <Hyperlink Command="{Binding DataContext.ViewAlbumCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                              CommandParameter="{Binding Album}"
+                                                              TextDecorations="None"
+                                                              Foreground="{DynamicResource MaterialDesignBodyLight}">
+                                                        <Run Text="{Binding Album.Title, Mode=OneWay}"/>
+                                                    </Hyperlink>
+                                                </TextBlock>
+                                                
+                                                <!-- Duration -->
+                                                <TextBlock Grid.Column="4"
+                                                          Text="{Binding FormattedDuration}"
+                                                          FontSize="14"
+                                                          Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                          VerticalAlignment="Center"
+                                                          Margin="8,0"/>
+                                                
+                                                <!-- Download Button -->
+                                                <Button Grid.Column="5"
+                                                       Style="{StaticResource MaterialDesignIconButton}"
+                                                       Width="36"
+                                                       Height="36"
+                                                       Command="{Binding DataContext.DownloadTrackCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                       CommandParameter="{Binding}"
+                                                       ToolTip="Download Track">
+                                                    <materialDesign:PackIcon Kind="Download" Width="18" Height="18"/>
+                                                </Button>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Grid>
+                    </materialDesign:Card>
                     
                     <!-- Albums Grid -->
                     <ItemsControl ItemsSource="{Binding AlbumResults}"
