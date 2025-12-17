@@ -1953,6 +1953,14 @@ func (m *Manager) buildOutputPath(track *api.Track) string {
 	album := sanitizeFilename(track.Album.Title)
 	title := sanitizeFilename(track.Title)
 	
+	// Get album year from release date (format: "YYYY-MM-DD" or "YYYY")
+	albumYear := ""
+	if track.Album.ReleaseDate != "" {
+		if len(track.Album.ReleaseDate) >= 4 {
+			albumYear = track.Album.ReleaseDate[:4]
+		}
+	}
+	
 	var folderPath string
 	var filename string
 	
@@ -2002,11 +2010,14 @@ func (m *Manager) buildOutputPath(track *api.Track) string {
 	} else {
 		// Album or single track download - use album artist/album folder structure
 		// This ensures compilations/soundtracks go to "Various Artists" folder
-		folderPath = filepath.Join(albumArtist, album)
+		
+		// Check if we need to disambiguate album folders with the same name but different albums
+		albumFolder := m.getDisambiguatedAlbumFolder(albumArtist, album, albumYear, track.Album.ID.String())
+		folderPath = filepath.Join(albumArtist, albumFolder)
 		
 		if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
-			fmt.Fprintf(logFile, "[%s] Building folder path: AlbumArtist='%s', Album='%s', FolderPath='%s'\n", 
-				time.Now().Format("2006-01-02 15:04:05"), albumArtist, album, folderPath)
+			fmt.Fprintf(logFile, "[%s] Building folder path: AlbumArtist='%s', Album='%s', AlbumFolder='%s', Year='%s', AlbumID='%s'\n", 
+				time.Now().Format("2006-01-02 15:04:05"), albumArtist, album, albumFolder, albumYear, track.Album.ID.String())
 			logFile.Close()
 		}
 		
@@ -2049,6 +2060,107 @@ func (m *Manager) buildOutputPath(track *api.Track) string {
 	}
 	
 	return fullPath
+}
+
+// Cache for album folder disambiguation - maps "artistFolder/albumFolder" -> albumID
+var albumFolderCache = make(map[string]string)
+var albumFolderCacheMu sync.RWMutex
+
+// getDisambiguatedAlbumFolder returns the album folder name, adding year if needed to avoid conflicts
+// This prevents albums with the same name but different release years from mixing tracks
+func (m *Manager) getDisambiguatedAlbumFolder(artistFolder, albumName, albumYear, albumID string) string {
+	// First, check if we've already determined the folder for this album ID
+	albumFolderCacheMu.RLock()
+	for folderKey, cachedAlbumID := range albumFolderCache {
+		if cachedAlbumID == albumID {
+			// We've already assigned a folder to this album, extract and return the album part
+			parts := strings.SplitN(folderKey, "/", 2)
+			if len(parts) == 2 {
+				albumFolderCacheMu.RUnlock()
+				return parts[1]
+			}
+		}
+	}
+	albumFolderCacheMu.RUnlock()
+	
+	// Check if the base folder (without year) already exists and belongs to a different album
+	baseFolderKey := artistFolder + "/" + albumName
+	baseFolderPath := filepath.Join(m.config.Download.OutputDir, artistFolder, albumName)
+	
+	albumFolderCacheMu.Lock()
+	defer albumFolderCacheMu.Unlock()
+	
+	// Check cache first
+	if cachedAlbumID, exists := albumFolderCache[baseFolderKey]; exists {
+		if cachedAlbumID == albumID {
+			// Same album, use base folder
+			return albumName
+		}
+		// Different album with same name - need to use year
+		if albumYear != "" {
+			yearFolder := fmt.Sprintf("%s (%s)", albumName, albumYear)
+			yearFolderKey := artistFolder + "/" + yearFolder
+			albumFolderCache[yearFolderKey] = albumID
+			
+			if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+				fmt.Fprintf(logFile, "[%s] Album folder conflict detected: '%s' already used by album %s, using '%s' for album %s\n", 
+					time.Now().Format("2006-01-02 15:04:05"), albumName, cachedAlbumID, yearFolder, albumID)
+				logFile.Close()
+			}
+			return yearFolder
+		}
+		// No year available, append album ID as last resort
+		idFolder := fmt.Sprintf("%s (%s)", albumName, albumID)
+		idFolderKey := artistFolder + "/" + idFolder
+		albumFolderCache[idFolderKey] = albumID
+		return idFolder
+	}
+	
+	// Check if folder exists on disk with a different album
+	if _, err := os.Stat(baseFolderPath); err == nil {
+		// Folder exists - check if it has an album marker file
+		markerPath := filepath.Join(baseFolderPath, ".album_id")
+		if markerData, err := os.ReadFile(markerPath); err == nil {
+			existingAlbumID := strings.TrimSpace(string(markerData))
+			if existingAlbumID != "" && existingAlbumID != albumID {
+				// Different album - need to use year
+				albumFolderCache[baseFolderKey] = existingAlbumID // Cache the existing album
+				
+				if albumYear != "" {
+					yearFolder := fmt.Sprintf("%s (%s)", albumName, albumYear)
+					yearFolderKey := artistFolder + "/" + yearFolder
+					albumFolderCache[yearFolderKey] = albumID
+					
+					if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+						fmt.Fprintf(logFile, "[%s] Album folder conflict (disk): '%s' belongs to album %s, using '%s' for album %s\n", 
+							time.Now().Format("2006-01-02 15:04:05"), albumName, existingAlbumID, yearFolder, albumID)
+						logFile.Close()
+					}
+					return yearFolder
+				}
+				// No year, use album ID
+				idFolder := fmt.Sprintf("%s (%s)", albumName, albumID)
+				idFolderKey := artistFolder + "/" + idFolder
+				albumFolderCache[idFolderKey] = albumID
+				return idFolder
+			}
+		}
+	}
+	
+	// No conflict - use base folder and cache it
+	albumFolderCache[baseFolderKey] = albumID
+	
+	// Create album marker file when the folder is created
+	go func() {
+		// Small delay to ensure folder is created first
+		time.Sleep(500 * time.Millisecond)
+		if _, err := os.Stat(baseFolderPath); err == nil {
+			markerPath := filepath.Join(baseFolderPath, ".album_id")
+			os.WriteFile(markerPath, []byte(albumID), 0644)
+		}
+	}()
+	
+	return albumName
 }
 
 // DiscInfo stores disc information for an album
