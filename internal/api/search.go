@@ -286,6 +286,15 @@ func (c *DeezerClient) GetAlbum(ctx context.Context, albumID string) (*Album, er
 		return nil, fmt.Errorf("failed to unmarshal album: %w", err)
 	}
 	
+	// Check if we need to fetch more tracks (Deezer API returns max 25 by default)
+	if album.TrackCount > 25 && album.Tracks != nil && len(album.Tracks.Data) < album.TrackCount {
+		// Fetch all tracks using the album/tracks endpoint with pagination
+		allTracks, err := c.GetAlbumTracks(ctx, albumID, album.TrackCount)
+		if err == nil && len(allTracks) > len(album.Tracks.Data) {
+			album.Tracks.Data = allTracks
+		}
+	}
+	
 	// Fix track positions if they're 0 (use array index + 1)
 	// Also normalize to use TrackNumber field for consistency
 	if album.Tracks != nil && album.Tracks.Data != nil {
@@ -305,6 +314,55 @@ func (c *DeezerClient) GetAlbum(ctx context.Context, albumID string) (*Album, er
 	responseCache.set(cacheKey, &album)
 	
 	return &album, nil
+}
+
+// GetAlbumTracks fetches all tracks for an album using pagination
+func (c *DeezerClient) GetAlbumTracks(ctx context.Context, albumID string, expectedCount int) ([]*Track, error) {
+	var allTracks []*Track
+	limit := 100 // Max per request
+	index := 0
+	
+	for {
+		params := url.Values{}
+		params.Set("limit", fmt.Sprintf("%d", limit))
+		params.Set("index", fmt.Sprintf("%d", index))
+		
+		result, err := c.doPublicAPIRequest(ctx, "/album/"+albumID+"/tracks", params)
+		if err != nil {
+			return allTracks, fmt.Errorf("get album tracks failed: %w", err)
+		}
+		
+		// Parse tracks response
+		tracksBytes, err := json.Marshal(result)
+		if err != nil {
+			return allTracks, fmt.Errorf("failed to marshal tracks data: %w", err)
+		}
+		
+		var tracksResponse struct {
+			Data  []*Track `json:"data"`
+			Total int      `json:"total"`
+			Next  string   `json:"next"`
+		}
+		if err := json.Unmarshal(tracksBytes, &tracksResponse); err != nil {
+			return allTracks, fmt.Errorf("failed to unmarshal tracks: %w", err)
+		}
+		
+		allTracks = append(allTracks, tracksResponse.Data...)
+		
+		// Check if we have all tracks or no more pages
+		if len(tracksResponse.Data) == 0 || tracksResponse.Next == "" || len(allTracks) >= expectedCount {
+			break
+		}
+		
+		index += limit
+		
+		// Safety limit to prevent infinite loops
+		if index > 1000 {
+			break
+		}
+	}
+	
+	return allTracks, nil
 }
 
 // GetArtist retrieves full artist details

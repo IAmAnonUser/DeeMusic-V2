@@ -128,9 +128,11 @@ type User struct {
 	TrackList string `json:"tracklist"`
 }
 
-// Tracks represents a collection of tracks
+// Tracks represents a collection of tracks with pagination support
 type Tracks struct {
-	Data []*Track `json:"data"`
+	Data  []*Track `json:"data"`
+	Total int      `json:"total"`
+	Next  string   `json:"next"`
 }
 
 // Genres represents a collection of genres
