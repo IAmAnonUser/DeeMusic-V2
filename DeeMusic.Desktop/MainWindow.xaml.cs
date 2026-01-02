@@ -194,20 +194,24 @@ namespace DeeMusic.Desktop
                             {
                                 try
                                 {
-                                    // Show downloading notification
-                                    NotificationService.Instance.ShowInfo("Downloading update in background...");
+                                    // Show persistent downloading notification
+                                    NotificationService.Instance.ShowPersistentInfo("Downloading update: 0%");
                                     LoggingService.Instance.LogInfo("User accepted update, starting download...");
                                     
                                     var progress = new Progress<int>(p =>
                                     {
-                                        if (p % 20 == 0 || p == 100) // Update every 20%
+                                        // Update the persistent notification with progress
+                                        NotificationService.Instance.UpdatePersistentInfo($"Downloading update: {p}%");
+                                        if (p % 20 == 0 || p == 100)
                                         {
-                                            NotificationService.Instance.ShowInfo($"Downloading update: {p}%");
                                             LoggingService.Instance.LogInfo($"Update download progress: {p}%");
                                         }
                                     });
                                     
                                     var downloadPath = await UpdateService.Instance.DownloadUpdateAsync(updateInfo, progress);
+                                    
+                                    // Dismiss the persistent notification
+                                    NotificationService.Instance.DismissPersistentNotification();
                                     
                                     if (downloadPath != null)
                                     {
@@ -235,6 +239,9 @@ namespace DeeMusic.Desktop
                                 }
                                 catch (Exception ex)
                                 {
+                                    // Dismiss persistent notification on error
+                                    NotificationService.Instance.DismissPersistentNotification();
+                                    
                                     LoggingService.Instance.LogError("Failed to download/install update", ex);
                                     NotificationService.Instance.ShowError("Update failed");
                                     MessageBox.Show(
@@ -858,38 +865,12 @@ namespace DeeMusic.Desktop
         }
 
         /// <summary>
-        /// Handle search box getting focus - navigate to search view when clicked
+        /// Handle search box getting focus - do nothing, let user type and press Enter
         /// </summary>
         private void SearchBox_GotFocus(object sender, RoutedEventArgs e)
         {
-            try
-            {
-                var mainViewModel = DataContext as MainViewModel;
-                if (mainViewModel == null)
-                {
-                    LoggingService.Instance.LogWarning("SearchBox_GotFocus: MainViewModel is null");
-                    return;
-                }
-
-                bool isOnSearchView = mainViewModel.CurrentView == mainViewModel.SearchViewModel;
-                LoggingService.Instance.LogInfo($"SearchBox_GotFocus: CurrentPage={mainViewModel.CurrentPage}, IsOnSearchView={isOnSearchView}");
-
-                // Navigate to search view when user clicks the search box
-                // Use Dispatcher to delay navigation until after current input is processed
-                if (!isOnSearchView)
-                {
-                    Dispatcher.BeginInvoke(new Action(() =>
-                    {
-                        mainViewModel.NavigateCommand?.Execute("Search");
-                        // Restore focus to search box after navigation
-                        SearchBox.Focus();
-                    }), System.Windows.Threading.DispatcherPriority.Input);
-                }
-            }
-            catch (Exception ex)
-            {
-                LoggingService.Instance.LogError("SearchBox_GotFocus error", ex);
-            }
+            // Do nothing - user can type their search from any page
+            // Navigation happens when they press Enter (handled in SearchBox_PreviewKeyDown)
         }
 
         /// <summary>
@@ -918,7 +899,8 @@ namespace DeeMusic.Desktop
                     bool isOnSearchView = mainViewModel.CurrentView == mainViewModel.SearchViewModel;
                     if (!isOnSearchView)
                     {
-                        // Navigate to search view first
+                        // Clear previous results (but keep query) and navigate to search view
+                        mainViewModel.SearchViewModel?.ClearResultsOnly();
                         mainViewModel.NavigateCommand?.Execute("Search");
                     }
                     // Execute search command

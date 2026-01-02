@@ -225,5 +225,99 @@ namespace DeeMusic.Desktop.Services
                 });
             }
         }
+
+        #region Persistent Notification for Progress Updates
+
+        private Border? _persistentNotification;
+        private TextBlock? _persistentTextBlock;
+
+        /// <summary>
+        /// Show a persistent notification that stays open until dismissed
+        /// </summary>
+        public void ShowPersistentInfo(string message)
+        {
+            if (_notificationContainer == null) return;
+
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                // If we already have a persistent notification, just update the text
+                if (_persistentNotification != null && _persistentTextBlock != null)
+                {
+                    _persistentTextBlock.Text = message;
+                    return;
+                }
+
+                // Create new persistent notification
+                _persistentNotification = CreateNotificationPanel(message, "#2196F3", "Information");
+                
+                // Find the TextBlock in the notification to update later
+                if (_persistentNotification.Child is StackPanel sp)
+                {
+                    foreach (var child in sp.Children)
+                    {
+                        if (child is TextBlock tb)
+                        {
+                            _persistentTextBlock = tb;
+                            break;
+                        }
+                    }
+                }
+
+                // Set Grid positioning
+                Grid.SetRow(_persistentNotification, 0);
+                Grid.SetRowSpan(_persistentNotification, 2);
+                Grid.SetColumn(_persistentNotification, 0);
+                Grid.SetColumnSpan(_persistentNotification, 2);
+                Panel.SetZIndex(_persistentNotification, 9999);
+
+                // Add to container
+                _notificationContainer.Children.Add(_persistentNotification);
+
+                // Animate in
+                AnimateIn(_persistentNotification);
+            });
+        }
+
+        /// <summary>
+        /// Update the text of the persistent notification
+        /// </summary>
+        public void UpdatePersistentInfo(string message)
+        {
+            if (_persistentTextBlock == null)
+            {
+                ShowPersistentInfo(message);
+                return;
+            }
+
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                _persistentTextBlock.Text = message;
+            });
+        }
+
+        /// <summary>
+        /// Dismiss the persistent notification
+        /// </summary>
+        public void DismissPersistentNotification()
+        {
+            if (_persistentNotification == null || _notificationContainer == null) return;
+
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                var notification = _persistentNotification;
+                _persistentNotification = null;
+                _persistentTextBlock = null;
+
+                AnimateOut(notification, () =>
+                {
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        _notificationContainer.Children.Remove(notification);
+                    });
+                });
+            });
+        }
+
+        #endregion
     }
 }

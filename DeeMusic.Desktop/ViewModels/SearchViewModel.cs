@@ -1454,6 +1454,15 @@ namespace DeeMusic.Desktop.ViewModels
         /// </summary>
         private void BackToHome()
         {
+            ClearSearchAndShowHome();
+        }
+        
+        /// <summary>
+        /// Clear search results and show home/welcome page.
+        /// Called when user clicks Back to Home button.
+        /// </summary>
+        public void ClearSearchAndShowHome()
+        {
             // Clear view all state
             IsViewingAll = false;
             CurrentViewAllCategory = null;
@@ -1461,6 +1470,34 @@ namespace DeeMusic.Desktop.ViewModels
             
             // Clear search state
             SearchQuery = string.Empty;
+            TrackResults.Clear();
+            AlbumResults.Clear();
+            ArtistResults.Clear();
+            PlaylistResults.Clear();
+            
+            // Reset to "all" tab
+            SelectedSearchType = "all";
+            
+            // Update UI state
+            OnPropertyChanged(nameof(HasResults));
+            OnPropertyChanged(nameof(ShowWelcome));
+            OnPropertyChanged(nameof(ShowNoResults));
+            OnPropertyChanged(nameof(ShowSections));
+            OnPropertyChanged(nameof(ShowFilteredResults));
+        }
+        
+        /// <summary>
+        /// Clear previous search results only (preserves search query).
+        /// Called before executing a new search from another page.
+        /// </summary>
+        public void ClearResultsOnly()
+        {
+            // Clear view all state
+            IsViewingAll = false;
+            CurrentViewAllCategory = null;
+            ViewAllItems.Clear();
+            
+            // Clear results but NOT the search query
             TrackResults.Clear();
             AlbumResults.Clear();
             ArtistResults.Clear();
