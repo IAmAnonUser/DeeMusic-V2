@@ -5,42 +5,42 @@ A modern, high-performance music downloader for D**zer with sp*tify playlist imp
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
-## ✨ Features
+## Features
 
 ### Core Functionality
-- 🎵 **Download Music from D**zer**
+- **Download Music from D**zer**
   - Individual tracks
   - Full albums with proper metadata
   - Playlists
   - High-quality audio (MP3 320kbps or FLAC)
 
-- 🎧 **sp*tify Integration**
+  - **sp*tify Integration**
   - Import sp*tify playlists directly
   - Automatic track matching on D**zer
   - Preserves playlist structure and metadata
   - Download sp*tify playlists as D**zer tracks
 
 ### Advanced Features
-- ⚡ **High-Performance Downloads**
+- **High-Performance Downloads**
   - Concurrent downloads (1-12 simultaneous)
   - Go-powered backend for speed
   - Efficient memory management
   - Resume failed downloads
 
-- 📁 **Smart Organization**
+- **Smart Organization**
   - Customizable folder structure
   - Artist/Album/Track organization
   - Multi-disc album support with CD folders
   - Automatic artwork download (up to 1500x1500)
 
-- 🎨 **Modern UI**
+- **Modern UI**
   - Clean, intuitive interface
   - Real-time download progress
   - Queue management
   - Search with filters (tracks, albums, artists, playlists)
   - Featured content on home page
 
-- 🔧 **Flexible Configuration**
+- **Flexible Configuration**
   - Custom download paths
   - Filename templates
   - Quality settings
@@ -48,7 +48,7 @@ A modern, high-performance music downloader for D**zer with sp*tify playlist imp
   - sp*tify API integration
 
 ### Metadata & Tagging
-- 📝 **Complete ID3 Tags**
+- **Complete ID3 Tags**
   - Title, Artist, Album
   - Track number and disc number
   - Album artist
@@ -57,7 +57,7 @@ A modern, high-performance music downloader for D**zer with sp*tify playlist imp
   - ISRC codes
   - Embedded album artwork
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 - Windows 10/11
@@ -93,7 +93,7 @@ A modern, high-performance music downloader for D**zer with sp*tify playlist imp
 3. Copy the **Client ID** and **Client Secret**
 4. Add them in DeeMusic Settings → sp*tify Integration
 
-## 📖 Usage
+## Usage
 
 ### Downloading Music
 
@@ -139,7 +139,7 @@ A modern, high-performance music downloader for D**zer with sp*tify playlist imp
 - Folder: `{artist}/{album}`
 - CD folder: `CD {disc_number}`
 
-## 🏗️ Architecture
+## Architecture
 
 ### Technology Stack
 - **Frontend:** C# / WPF (.NET 8.0)
@@ -164,7 +164,7 @@ DeeMusic-V2/
 └── docs/                      # Documentation
 ```
 
-## 🔧 Building from Source
+## Building from Source
 
 ### Prerequisites
 - Visual Studio 2022 or later
@@ -205,40 +205,7 @@ Or use the provided build script:
 .\run.bat
 ```
 
-## 📝 Recent Updates
-
-### Version 2.0.0 (Latest)
-
-**New Features:**
-- ✅ sp*tify playlist import with automatic track matching
-- ✅ Multi-disc album support with CD folder creation
-- ✅ High-resolution artwork download (up to 1500x1500)
-- ✅ Featured content on home page (New Releases, Top Albums, etc.)
-- ✅ Improved search with category filters
-- ✅ Real-time download progress tracking
-
-**Improvements:**
-- ✅ Fixed progress bar accuracy for playlists
-- ✅ Prevented duplicate track downloads
-- ✅ Better error handling and retry logic
-- ✅ Improved navigation flow
-- ✅ Enhanced UI responsiveness
-- ✅ Optimized concurrent download performance
-
-**Bug Fixes:**
-- ✅ Fixed playlist progress not reaching 100%
-- ✅ Fixed navigation issues after sp*tify import
-- ✅ Fixed multi-disc album detection
-- ✅ Fixed track retry logic causing progress drops
-- ✅ Fixed completed tracks being re-downloaded
-
-## 🐛 Known Issues
-
-- Some sp*tify tracks may not be available on D**zer
-- Very large playlists (500+ tracks) may take time to process
-- D**zer ARL tokens expire periodically and need to be refreshed
-
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
@@ -248,26 +215,22 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 4. Push to the branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
-## ⚠️ Disclaimer
+## Disclaimer
 
 This tool is for educational purposes only. Users are responsible for complying with D**zer's Terms of Service and applicable copyright laws. The developers are not responsible for any misuse of this software.
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - D**zer for their music streaming service
 - sp*tify for their Web API
 - The Go and .NET communities for excellent tools and libraries
 
-## 📧 Support
+## Support
 
 For issues, questions, or suggestions:
 - Open an [Issue](https://github.com/IAmAnonUser/DeeMusic-V2/issues)
-- Check existing issues for solutions
 
----
-
-**Note:** This is a complete rewrite of DeeMusic V1 (Python) with improved performance, stability, and features.
