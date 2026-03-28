@@ -2,7 +2,6 @@
 
 A modern, high-performance music downloader for D**zer with sp*tify playlist import support. Built with C# (WPF) frontend and Go backend for optimal performance.
 
-![DeeMusic V2](https://img.shields.io/badge/version-2.0.0-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 

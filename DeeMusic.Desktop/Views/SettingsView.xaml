@@ -23,11 +23,16 @@
         </Grid.RowDefinitions>
         
         <!-- Header -->
-        <TextBlock Grid.Row="0"
-                  Text="Settings" 
-                  FontSize="24" 
-                  FontWeight="SemiBold"
-                  Margin="8,0,0,16"/>
+        <StackPanel Grid.Row="0" Margin="8,0,0,16">
+            <TextBlock Text="Settings" 
+                      FontSize="24" 
+                      FontWeight="SemiBold"
+                      Margin="0,0,0,8"/>
+            <TextBlock FontSize="12" Foreground="{DynamicResource MaterialDesignBodyLight}">
+                <Run Text="Current IP: "/>
+                <Run Text="{Binding CurrentIP, Mode=OneWay}" FontWeight="SemiBold"/>
+            </TextBlock>
+        </StackPanel>
         
         <!-- Tabbed Content -->
         <TabControl Grid.Row="1" 

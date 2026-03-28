@@ -163,6 +163,23 @@ namespace DeeMusic.Desktop.ViewModels
             }
         }
 
+        private string _currentIP = "Fetching...";
+        /// <summary>
+        /// Gets the current public IP address
+        /// </summary>
+        public string CurrentIP
+        {
+            get => _currentIP;
+            private set
+            {
+                if (_currentIP != value)
+                {
+                    _currentIP = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
         /// <summary>
         /// Gets whether an update is available
         /// </summary>
@@ -537,6 +554,9 @@ namespace DeeMusic.Desktop.ViewModels
             TestSpotifyConnectionCommand = new AsyncRelayCommand(TestSpotifyConnectionAsync);
             CheckForUpdatesCommand = new AsyncRelayCommand(CheckForUpdatesAsync);
             InstallUpdateCommand = new AsyncRelayCommand(InstallUpdateAsync, () => _availableUpdate != null);
+            
+            // Fetch current IP address
+            _ = FetchCurrentIPAsync();
         }
 
         #region Settings Operations
@@ -1176,6 +1196,24 @@ namespace DeeMusic.Desktop.ViewModels
         protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+        
+        /// <summary>
+        /// Fetch the current public IP address
+        /// </summary>
+        private async Task FetchCurrentIPAsync()
+        {
+            try
+            {
+                using var client = new System.Net.Http.HttpClient();
+                client.Timeout = TimeSpan.FromSeconds(5);
+                var ip = await client.GetStringAsync("https://api.ipify.org");
+                CurrentIP = ip.Trim();
+            }
+            catch
+            {
+                CurrentIP = "Unable to fetch IP";
+            }
         }
     }
 }
