@@ -144,6 +144,22 @@ func (m *Manager) Stop() {
 	m.mu.Unlock()
 }
 
+// UpdateConfig updates the manager's configuration
+// This is called when settings are changed in the UI
+func (m *Manager) UpdateConfig(newConfig *config.Config) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	
+	m.config = newConfig
+	
+	// Log the update
+	if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		fmt.Fprintf(logFile, "[%s] Download manager config updated: quality=%s, concurrent=%d\n", 
+			time.Now().Format("2006-01-02 15:04:05"), newConfig.Download.Quality, newConfig.Download.ConcurrentDownloads)
+		logFile.Close()
+	}
+}
+
 // handleJob processes a single download job
 func (m *Manager) handleJob(ctx context.Context, job *Job) error {
 	switch job.Type {
@@ -422,6 +438,12 @@ func (m *Manager) downloadTrackJob(ctx context.Context, job *Job) error {
 	}
 
 	// Get download URL
+	if logFile, err2 := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err2 == nil {
+		fmt.Fprintf(logFile, "[%s] Requesting download URL: trackID=%s, quality=%s\n", 
+			time.Now().Format("2006-01-02 15:04:05"), job.TrackID, m.config.Download.Quality)
+		logFile.Close()
+	}
+	
 	downloadURLInfo, err := m.deezerAPI.GetTrackDownloadURL(ctx, job.TrackID, m.config.Download.Quality)
 	if err != nil {
 		if logFile, err2 := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err2 == nil {
@@ -432,7 +454,8 @@ func (m *Manager) downloadTrackJob(ctx context.Context, job *Job) error {
 	}
 
 	if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
-		fmt.Fprintf(logFile, "[%s] Got download URL, starting download...\n", time.Now().Format("2006-01-02 15:04:05"))
+		fmt.Fprintf(logFile, "[%s] Got download URL: quality=%s, format=%s, starting download...\n", 
+			time.Now().Format("2006-01-02 15:04:05"), downloadURLInfo.Quality, downloadURLInfo.Format)
 		logFile.Close()
 	}
 
@@ -475,7 +498,7 @@ func (m *Manager) downloadTrackJob(ctx context.Context, job *Job) error {
 	}
 
 	// Build output path
-	outputPath := m.buildOutputPath(track)
+	outputPath := m.buildOutputPath(track, downloadURLInfo.Format)
 
 	// Check if file already exists (resume functionality)
 	if fileInfo, err := os.Stat(outputPath); err == nil {
@@ -1943,7 +1966,7 @@ func (m *Manager) isJobPaused(jobID string) bool {
 }
 
 // buildOutputPath builds the output file path for a track
-func (m *Manager) buildOutputPath(track *api.Track) string {
+func (m *Manager) buildOutputPath(track *api.Track, format string) string {
 	// Sanitize names
 	artist := sanitizeFilename(track.Artist.Name)
 	albumArtist := sanitizeFilename(track.AlbumArtist)
@@ -1952,6 +1975,19 @@ func (m *Manager) buildOutputPath(track *api.Track) string {
 	}
 	album := sanitizeFilename(track.Album.Title)
 	title := sanitizeFilename(track.Title)
+	
+	// Determine file extension from format
+	fileExt := ".mp3" // default
+	if format == "flac" || format == "FLAC" {
+		fileExt = ".flac"
+	}
+	
+	// Debug log the format and extension
+	if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		fmt.Fprintf(logFile, "[%s] buildOutputPath: format='%s', fileExt='%s', track='%s'\n", 
+			time.Now().Format("2006-01-02 15:04:05"), format, fileExt, track.Title)
+		logFile.Close()
+	}
 	
 	// Get album year from release date (format: "YYYY-MM-DD" or "YYYY")
 	albumYear := ""
@@ -2000,7 +2036,7 @@ func (m *Manager) buildOutputPath(track *api.Track) string {
 		filename = strings.ReplaceAll(filename, "{album}", album)
 		filename = strings.ReplaceAll(filename, "{playlist}", playlistName)
 		filename = strings.ReplaceAll(filename, "{playlist_name}", playlistName)
-		filename += ".mp3"
+		filename += fileExt
 		
 		if logFile, err := os.OpenFile(filepath.Join(os.TempDir(), "deemusic-download-debug.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
 			fmt.Fprintf(logFile, "[%s] Playlist track path: %s (Playlist=%s, Position=%d)\n", 
@@ -2041,10 +2077,10 @@ func (m *Manager) buildOutputPath(track *api.Track) string {
 		// Build filename using track number if available
 		if track.TrackNumber > 0 {
 			// Album track format
-			filename = fmt.Sprintf("%02d - %s - %s.mp3", track.TrackNumber, artist, title)
+			filename = fmt.Sprintf("%02d - %s - %s%s", track.TrackNumber, artist, title, fileExt)
 		} else {
 			// Single track format
-			filename = fmt.Sprintf("%s - %s.mp3", artist, title)
+			filename = fmt.Sprintf("%s - %s%s", artist, title, fileExt)
 		}
 	}
 	
@@ -2055,7 +2091,7 @@ func (m *Manager) buildOutputPath(track *api.Track) string {
 	dir := filepath.Dir(fullPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		// Fallback to flat structure if directory creation fails
-		safeFilename := fmt.Sprintf("track_%s.mp3", track.ID)
+		safeFilename := fmt.Sprintf("track_%s%s", track.ID, fileExt)
 		fullPath = filepath.Join(m.config.Download.OutputDir, safeFilename)
 	}
 	

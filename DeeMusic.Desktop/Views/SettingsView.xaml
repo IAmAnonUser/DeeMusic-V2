@@ -301,7 +301,7 @@
                         <!-- Audio Quality -->
                         <ComboBox materialDesign:HintAssist.Hint="Audio Quality"
                                  Style="{StaticResource MaterialDesignOutlinedComboBox}"
-                                 SelectedValue="{Binding Quality}"
+                                 SelectedValue="{Binding Quality, UpdateSourceTrigger=PropertyChanged}"
                                  SelectedValuePath="Tag"
                                  Margin="0,0,0,16">
                             <ComboBoxItem Content="MP3 128 kbps" Tag="MP3_128"/>

@@ -198,11 +198,24 @@ func InitializeApp(configPath *C.char) C.int {
 	mu.Lock()
 	defer mu.Unlock()
 	
-	// Open debug log file
+	// Open debug log file with rotation
 	if debugLog == nil {
 		dataDir := config.GetDataDir()
 		logPath := filepath.Join(dataDir, "logs", "go-backend.log")
 		os.MkdirAll(filepath.Dir(logPath), 0755)
+		
+		// Check if log file is too large (> 10MB) and rotate it
+		if fileInfo, err := os.Stat(logPath); err == nil {
+			const maxLogSize = 10 * 1024 * 1024 // 10MB
+			if fileInfo.Size() > maxLogSize {
+				// Rotate: rename current log to .old and start fresh
+				oldLogPath := logPath + ".old"
+				os.Remove(oldLogPath) // Remove old backup if exists
+				os.Rename(logPath, oldLogPath)
+				fmt.Fprintf(os.Stderr, "[INFO] Rotated log file (was %d MB)\n", fileInfo.Size()/(1024*1024))
+			}
+		}
+		
 		var err error
 		debugLog, err = os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
@@ -1214,28 +1227,47 @@ func UpdateSettings(settingsJSON *C.char) C.int {
 	
 	goSettingsJSON := C.GoString(settingsJSON)
 	
+	// Log what we received
+	logDebug("UpdateSettings called, JSON length: %d", len(goSettingsJSON))
+	
 	var newCfg config.Config
 	err := json.Unmarshal([]byte(goSettingsJSON), &newCfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to unmarshal settings: %v\n", err)
+		logDebug("Failed to unmarshal settings: %v", err)
 		return -2
 	}
+	
+	logDebug("Unmarshaled settings: Quality=%s, OutputDir=%s", newCfg.Download.Quality, newCfg.Download.OutputDir)
 	
 	// Validate new config
 	if err := newCfg.Validate(); err != nil {
 		fmt.Fprintf(os.Stderr, "Invalid settings: %v\n", err)
+		logDebug("Invalid settings: %v", err)
 		return -3
 	}
 	
 	// Save to file
 	configPath := config.GetConfigPath()
+	logDebug("Saving settings to: %s", configPath)
 	if err := newCfg.Save(configPath); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to save settings: %v\n", err)
+		logDebug("Failed to save settings: %v", err)
 		return -4
 	}
 	
 	// Update in-memory config
 	cfg = &newCfg
+	
+	// Update download manager's config reference
+	if downloadMgr != nil {
+		downloadMgr.UpdateConfig(&newCfg)
+		logDebug("Download manager config updated via UpdateConfig method")
+	} else {
+		logDebug("WARNING: downloadMgr is nil, cannot update config")
+	}
+	
+	logDebug("Settings updated successfully, quality=%s", newCfg.Download.Quality)
 	
 	return 0
 }

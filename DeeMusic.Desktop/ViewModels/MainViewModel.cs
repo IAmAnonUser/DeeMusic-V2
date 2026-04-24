@@ -404,6 +404,19 @@ namespace DeeMusic.Desktop.ViewModels
                 await SearchViewModel.InitializeAsync();
                 await SettingsViewModel.LoadSettingsAsync();
                 
+                // Push settings to Go backend to ensure it has the latest from file
+                // This is critical after app restart to sync the backend with saved settings
+                try
+                {
+                    LoggingService.Instance.LogInfo($"Syncing settings to Go backend on startup. Quality={SettingsViewModel.Settings.Download.Quality}");
+                    await _service.UpdateSettingsAsync(SettingsViewModel.Settings);
+                    LoggingService.Instance.LogInfo("Settings synced to Go backend successfully");
+                }
+                catch (Exception ex)
+                {
+                    LoggingService.Instance.LogWarning($"Failed to sync settings to Go backend on startup: {ex.Message}");
+                }
+                
                 // Configure Spotify service with credentials from settings
                 ConfigureSpotifyService();
                 

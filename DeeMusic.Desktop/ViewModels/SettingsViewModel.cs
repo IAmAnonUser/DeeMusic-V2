@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
@@ -720,10 +721,21 @@ namespace DeeMusic.Desktop.ViewModels
                 LoggingService.Instance.LogInfo("SaveSettingsAsync - saving to file");
                 
                 // Save settings locally to file
-                // DO NOT update backend - the backend encrypts the ARL and will cause issues
-                // The backend will load the new settings from file on next initialization
                 await SaveSettingsToFileAsync();
                 LoggingService.Instance.LogInfo("Settings saved to file successfully");
+                
+                // Update the Go backend with the new settings
+                try
+                {
+                    LoggingService.Instance.LogInfo($"Updating Go backend with new settings. Quality={Settings.Download.Quality}");
+                    await _service.UpdateSettingsAsync(Settings);
+                    LoggingService.Instance.LogInfo("Go backend settings updated successfully");
+                }
+                catch (Exception ex)
+                {
+                    LoggingService.Instance.LogWarning($"Failed to update Go backend settings: {ex.Message}");
+                    // Don't throw - file save was successful, backend will reload on next init
+                }
                 
                 HasUnsavedChanges = false;
                 
@@ -756,12 +768,86 @@ namespace DeeMusic.Desktop.ViewModels
             {
                 LoggingService.Instance.LogInfo($"ForceSaveAsync - ARL: {Settings.Deezer.ARL.Substring(0, Math.Min(20, Settings.Deezer.ARL.Length))}...");
                 
+                // Read the OLD quality from file BEFORE saving
+                var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                var deeMusicPath = System.IO.Path.Combine(appDataPath, "DeeMusicV2");
+                var settingsPath = System.IO.Path.Combine(deeMusicPath, "settings.json");
+                
+                string? oldQuality = null;
+                try
+                {
+                    if (System.IO.File.Exists(settingsPath))
+                    {
+                        var oldJson = await System.IO.File.ReadAllTextAsync(settingsPath);
+                        var oldSettings = System.Text.Json.JsonSerializer.Deserialize<Models.Settings>(oldJson, new System.Text.Json.JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true
+                        });
+                        oldQuality = oldSettings?.Download?.Quality;
+                        LoggingService.Instance.LogInfo($"Old quality from file: {oldQuality}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LoggingService.Instance.LogWarning($"Failed to read old quality: {ex.Message}");
+                }
+                
                 // Save to file
-                // DO NOT update backend - the backend encrypts the ARL and will cause issues
-                // The backend will load the new settings from file on next initialization
                 LoggingService.Instance.LogInfo("Calling SaveSettingsToFileAsync...");
                 await SaveSettingsToFileAsync();
                 LoggingService.Instance.LogInfo("SaveSettingsToFileAsync completed - settings saved to file");
+                
+                // Read the settings file directly (not from Settings object) to ensure we have what was actually saved
+                var json = await System.IO.File.ReadAllTextAsync(settingsPath);
+                var savedSettings = System.Text.Json.JsonSerializer.Deserialize<Models.Settings>(json, new System.Text.Json.JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+                
+                if (savedSettings != null)
+                {
+                    LoggingService.Instance.LogInfo($"Read settings from file. Quality={savedSettings.Download.Quality}");
+                    
+                    // Check if quality changed
+                    bool qualityChanged = oldQuality != null && oldQuality != savedSettings.Download.Quality;
+                    LoggingService.Instance.LogInfo($"Quality change check: old={oldQuality}, new={savedSettings.Download.Quality}, changed={qualityChanged}");
+                    
+                    // Update the Go backend with settings from file
+                    try
+                    {
+                        LoggingService.Instance.LogInfo($"Updating Go backend with settings from file... Quality={savedSettings.Download.Quality}");
+                        await _service.UpdateSettingsAsync(savedSettings);
+                        LoggingService.Instance.LogInfo("Go backend settings updated successfully");
+                        
+                        // Now reload into our Settings object
+                        await LoadSettingsAsync();
+                        
+                        // If quality changed, restart the app
+                        if (qualityChanged)
+                        {
+                            LoggingService.Instance.LogInfo($"Quality changed from {oldQuality} to {savedSettings.Download.Quality}, restarting app...");
+                            
+                            // Show notification
+                            NotificationService.Instance.ShowInfo($"Quality changed to {savedSettings.Download.Quality}. Restarting app...");
+                            
+                            // Wait a moment for the notification to be visible
+                            await Task.Delay(1500);
+                            
+                            // Restart the application
+                            var exePath = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName;
+                            if (!string.IsNullOrEmpty(exePath))
+                            {
+                                System.Diagnostics.Process.Start(exePath);
+                                System.Windows.Application.Current.Shutdown();
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LoggingService.Instance.LogWarning($"Failed to update Go backend settings: {ex.Message}");
+                        // Don't throw - file save was successful, backend will reload on next init
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -798,6 +884,7 @@ namespace DeeMusic.Desktop.ViewModels
 
             // Log what we're about to save
             LoggingService.Instance.LogInfo($"About to serialize Settings.System.Theme: '{Settings.System.Theme}'");
+            LoggingService.Instance.LogInfo($"About to serialize Settings.Download.Quality: '{Settings.Download.Quality}'");
             
             // Serialize and save
             var json = System.Text.Json.JsonSerializer.Serialize(Settings, new System.Text.Json.JsonSerializerOptions
